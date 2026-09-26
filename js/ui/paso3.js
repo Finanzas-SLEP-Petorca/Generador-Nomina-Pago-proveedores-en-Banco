@@ -11,7 +11,7 @@ let current = null, prefijoEditado = false;
 
 export const ctxBuild = () => ({ docs: st.docs, maestro: st.maestro, nominas: st.nominas, group: prefs.group !== false, email: st.config.emailDefecto });
 export const construir = f => build(f, ctxBuild());
-const nombreArchivo = f => fileName($("cfgName").value, f);
+const nombreArchivo = f => fileName($("cfgName").value, f, new Date(), st.config.fuentes);
 
 // Refresca los campos que vienen de pago_config/general sin pisar lo que se escribe.
 export function syncCampos() {

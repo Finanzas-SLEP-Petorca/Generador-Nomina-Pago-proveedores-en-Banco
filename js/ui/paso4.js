@@ -1,7 +1,7 @@
 // Paso 4: bitácora de nóminas, resultado del banco e historial.
 
 import { M_TIPO, EST_PAGO } from "../catalogos.js";
-import { S, normRut, fmtRut, money, fmtFecha, fmtISO, isoLocal, todayISO, resultDue, fmtDue, diaHabilSiguiente, nomStatus, toTxt, today } from "../formato.js";
+import { S, normRut, fmtRut, money, fmtFecha, fmtISO, isoLocal, todayISO, resultDue, fmtDue, diaHabilSiguiente, nomStatus, nombreNomina, toTxt, today } from "../formato.js";
 import { bankWorkbook } from "../excel.js";
 import { st, aFecha, suscribirHistorial, cargarNomina, guardarCarga, deshacerCarga, resultadoPago, pagarPendientes, volverPendientes, anularNomina, exportarRespaldo } from "../datos.js";
 import { $, esc, toast, accion, descargar, prefs, guardarPrefs, mensajeError } from "./comun.js";
@@ -101,7 +101,7 @@ function renderNomDetail() {
   const pend = n.pagos.filter(p => p.estado === "pendiente").length, pag = n.pagos.filter(p => p.estado === "pagado"), rech = n.pagos.filter(p => p.estado === "rechazado");
   box.innerHTML = `
   <div class="row" style="margin-top:0;justify-content:space-between"><h2 style="margin:0">Nómina N° ${n.num}, ${esc(n.fuente)}</h2><span class="tag ${s.c}">${esc(s.t)}</span></div>
-  <p class="due">Generada el ${creada(n)}${n.creadaPor ? " por " + esc(n.creadaPor) : ""}. Archivo ${esc(n.archivo)}.txt. ${n.pagos.length} pago${n.pagos.length === 1 ? "" : "s"} por ${money(n.total)}.${n.fechaPago ? ` Fecha de pago: ${fmtISO(n.fechaPago)}.` : ""}${cargada ? ` Pagado ${money(pag.reduce((a, p) => a + p.monto, 0))}, rechazado ${money(rech.reduce((a, p) => a + p.monto, 0))}, pendiente de resultado ${money(n.pagos.filter(p => p.estado === "pendiente").reduce((a, p) => a + p.monto, 0))}.` : ""}</p>
+  <p class="due">Generada el ${creada(n)}${n.creadaPor ? " por " + esc(n.creadaPor) : ""}. Archivo ${esc(nombreNomina(n))}.txt. ${n.pagos.length} pago${n.pagos.length === 1 ? "" : "s"} por ${money(n.total)}.${n.fechaPago ? ` Fecha de pago: ${fmtISO(n.fechaPago)}.` : ""}${cargada ? ` Pagado ${money(pag.reduce((a, p) => a + p.monto, 0))}, rechazado ${money(rech.reduce((a, p) => a + p.monto, 0))}, pendiente de resultado ${money(n.pagos.filter(p => p.estado === "pendiente").reduce((a, p) => a + p.monto, 0))}.` : ""}</p>
   <div class="grid">
     <label>Fecha de carga en BancoEstado<input type="date" id="nFecha" value="${n.fechaCarga || todayISO()}" ${anul ? "disabled" : ""}></label>
     <label title="Día en que el banco paga la nómina. Queda registrada aunque después haya pagos rechazados.">Fecha de pago de la nómina<input type="date" id="nFechaPago" value="${n.fechaPago || diaHabilSiguiente(n.fechaCarga || todayISO(), st.config.feriados)}" ${anul ? "disabled" : ""}></label>
@@ -149,8 +149,8 @@ function renderNomDetail() {
   if (q("nCargar")) q("nCargar").onclick = () => { const d = datosCarga(); if (!fechasOk(d)) return; accion(q("nCargar"), async () => { await cargarNomina(n.id, d); toast(`Nómina N° ${n.num} marcada como cargada el ${fmtISO(d.fechaCarga)}, con pago el ${fmtISO(d.fechaPago)}. Resultado desde el ${fmtDue(resultDue(d.fechaCarga, st.config.feriados))}`) }) };
   if (q("nGuardar")) q("nGuardar").onclick = () => { const d = datosCarga(); if (!fechasOk(d)) return; accion(q("nGuardar"), async () => { await guardarCarga(n.id, d); toast("Cambios guardados") }) };
   if (q("nPagarRest")) q("nPagarRest").onclick = () => { if (Date.now() < due.getTime() && !confirm("Aún no son las 14:00 del día hábil siguiente a la carga. ¿Marcar igual los pendientes como pagados?")) return; accion(q("nPagarRest"), async () => { await pagarPendientes(n.id); toast("Pagos pendientes marcados como pagados") }) };
-  q("nTxt").onclick = () => descargar(n.archivo + ".txt", toTxt(n.lineas));
-  q("nXlsx").onclick = () => accion(q("nXlsx"), async () => { try { descargar(n.archivo + ".xlsx", await bankWorkbook(n.lineas)) } catch (e) { toast("No se pudo armar el Excel: " + mensajeError(e)) } });
+  q("nTxt").onclick = () => descargar(nombreNomina(n) + ".txt", toTxt(n.lineas));
+  q("nXlsx").onclick = () => accion(q("nXlsx"), async () => { try { descargar(nombreNomina(n) + ".xlsx", await bankWorkbook(n.lineas)) } catch (e) { toast("No se pudo armar el Excel: " + mensajeError(e)) } });
   if (q("nAnular")) q("nAnular").onclick = () => { if (!confirm(`¿Anular la nómina N° ${n.num}? Sus ${n.pagos.reduce((a, p) => a + p.docs.length, 0)} documentos vuelven a pendientes. Hazlo solo si no se cargó en el banco.`)) return; accion(q("nAnular"), async () => { await anularNomina(n.id); toast("Nómina anulada; documentos de vuelta en pendientes") }) };
   if (q("nDescargar")) q("nDescargar").onclick = () => accion(q("nDescargar"), () => deshacerCarga(n.id));
   box.querySelectorAll("[data-pe]").forEach(sel => sel.onchange = () => {

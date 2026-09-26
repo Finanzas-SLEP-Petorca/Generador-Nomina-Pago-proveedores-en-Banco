@@ -175,6 +175,15 @@ ok("nombre de archivo", () => {
   const d = new Date(2026, 8, 26);
   assert.equal(F.fileName(F.expandPrefijo("AAAAMMDD_PAGO_PROVEEDORES", d), "SEP"), "20260926_PAGO_PROVEEDORES_SEP");
   assert.equal(F.fileName("X_.txt", "MANTENCION ESCUELAS"), "X_MANTENCION_ESCUELAS");
+  // La fuente no se repite aunque el prefijo ya la traiga (ni otra fuente conocida).
+  const fs = ["GENERAL", "SEP", "PIE", "FAEP", "MANTENCION ESCUELAS"];
+  assert.equal(F.fileName("20260926_PAGO_PROVEEDORES_SEP", "SEP", d, fs), "20260926_PAGO_PROVEEDORES_SEP");
+  assert.equal(F.fileName("20260926_PAGO_PROVEEDORES_sep_", "SEP", d, fs), "20260926_PAGO_PROVEEDORES_SEP");
+  assert.equal(F.fileName("20260926_PAGO_PROVEEDORES_PIE", "SEP", d, fs), "20260926_PAGO_PROVEEDORES_SEP");
+  assert.equal(F.fileName("X_MANTENCION_ESCUELAS", "MANTENCION ESCUELAS", d, fs), "X_MANTENCION_ESCUELAS");
+  assert.equal(F.fileName("SEP", "SEP", d, fs), "SEP_SEP"); // un prefijo que es solo la fuente se respeta
+  assert.equal(F.nombreNomina({ archivo: "20260926_PAGO_PROVEEDORES_SEP_SEP", fuente: "SEP" }), "20260926_PAGO_PROVEEDORES_SEP");
+  assert.equal(F.nombreNomina({ archivo: "20260926_PAGO_PROVEEDORES_SEP", fuente: "SEP" }), "20260926_PAGO_PROVEEDORES_SEP");
 });
 
 console.log(`\n${pruebas} pruebas OK`);

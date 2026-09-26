@@ -1,7 +1,7 @@
 // Configuración: prefijo del archivo, email por defecto, feriados y
 // migración desde el panel anterior (importar respaldo JSON, solo pAdmin).
 
-import { S, parseFecha, fmtISO, expandPrefijo, today } from "../formato.js";
+import { S, parseFecha, fmtISO, expandPrefijo, quitarFuenteFinal, today } from "../formato.js";
 import { st, guardarConfig, exportarRespaldo, leerRespaldo, analizarRespaldo, importarRespaldo } from "../datos.js";
 import { $, esc, toast, accion, descargar, mensajeError } from "./comun.js";
 import { DIAS } from "../catalogos.js";
@@ -10,7 +10,13 @@ let analisis = null;
 const aISO = f => f.slice(4) + "-" + f.slice(2, 4) + "-" + f.slice(0, 2); // DDMMAAAA → AAAA-MM-DD
 
 export function init() {
-  $("cPrefijo").onchange = () => { const v = S($("cPrefijo").value).replace(/\.(txt|xlsx?)$/i, ""); if (!v) { toast("El prefijo no puede quedar vacío"); return } accion(null, async () => { await guardarConfig({ prefijoArchivo: v }); toast("Prefijo guardado: " + expandPrefijo(v) + "_FUENTE.txt") }) };
+  $("cPrefijo").onchange = () => {
+    // La fuente la agrega el panel al final: si se escribió una, se quita.
+    const v = quitarFuenteFinal($("cPrefijo").value, st.config.fuentes);
+    if (!v) { toast("El prefijo no puede quedar vacío"); return }
+    $("cPrefijo").value = v;
+    accion(null, async () => { await guardarConfig({ prefijoArchivo: v }); toast("Prefijo guardado. Ejemplo: " + expandPrefijo(v) + "_" + (st.config.fuentes[0] || "SEP") + ".txt") });
+  };
   $("cEmail").onchange = () => accion(null, async () => { await guardarConfig({ emailDefecto: S($("cEmail").value) }); toast("Email por defecto guardado") });
   $("btnAddFeriado").onclick = () => {
     // Acepta una o varias fechas (una por línea o separadas por coma), dd/mm/aaaa o aaaa-mm-dd.
@@ -59,7 +65,7 @@ function mostrarResumen(nombre) {
 export function renderConfig() {
   if (document.activeElement !== $("cPrefijo")) $("cPrefijo").value = st.config.prefijoArchivo;
   if (document.activeElement !== $("cEmail")) $("cEmail").value = st.config.emailDefecto;
-  $("cPrefijoInfo").textContent = "Ejemplo de hoy: " + expandPrefijo(st.config.prefijoArchivo) + "_SEP.txt";
+  $("cPrefijoInfo").textContent = "El panel agrega la fuente al final. Ejemplo de hoy: " + expandPrefijo(st.config.prefijoArchivo) + "_" + (st.config.fuentes.includes("SEP") ? "SEP" : st.config.fuentes[0]) + ".txt";
   const fer = st.config.feriados.slice().sort();
   const dia = iso => { const [y, m, d] = iso.split("-").map(Number); return DIAS[new Date(y, m - 1, d).getDay()] };
   $("feriados").innerHTML = fer.length ? fer.map(f => `<span class="chip">${dia(f)} ${fmtISO(f)}<button data-rmfer="${f}" aria-label="Quitar feriado ${fmtISO(f)}" title="Quitar feriado">×</button></span>`).join("") : `<span class="hint">Sin feriados cargados: el resultado del banco solo salta sábados y domingos.</span>`;

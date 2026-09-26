@@ -162,7 +162,21 @@ export function activeFuentes(docs, fuentes) { const set = new Set(docs.filter(d
 
 // Prefijo del archivo: el patrón guardado con AAAAMMDD reemplazado por la fecha.
 export function expandPrefijo(patron, fecha = new Date()) { return S(patron).replace(/AAAAMMDD/g, today(fecha)) }
-export function fileName(prefijo, f, fecha = new Date()) { return (S(prefijo) || today(fecha) + "_PAGO_PROVEEDORES").replace(/\.(txt|xlsx?)$/i, "").replace(/_+$/, "") + "_" + f.replace(/ /g, "_") }
+// El nombre siempre termina en _FUENTE. Si el prefijo ya trae una fuente al
+// final (ej. …_PROVEEDORES_SEP), se quita para no repetirla (…_SEP_SEP).
+const conGuion = f => S(f).replace(/ /g, "_");
+export function quitarFuenteFinal(prefijo, fuentes = []) {
+  let p = S(prefijo).replace(/\.(txt|xlsx?)$/i, "").replace(/_+$/, "");
+  const fs = [...new Set(fuentes.map(conGuion).filter(Boolean))].sort((a, b) => b.length - a.length);
+  for (let cambio = true; cambio;) {
+    cambio = false;
+    for (const f of fs) if (p.toUpperCase().endsWith("_" + f.toUpperCase()) && p.length > f.length + 1) { p = p.slice(0, -(f.length + 1)).replace(/_+$/, ""); cambio = true; break }
+  }
+  return p;
+}
+export function fileName(prefijo, f, fecha = new Date(), fuentes = []) { return (quitarFuenteFinal(prefijo, [...fuentes, f]) || today(fecha) + "_PAGO_PROVEEDORES") + "_" + conGuion(f) }
+// Nombre para descargar una nómina ya registrada, sin la fuente repetida.
+export const nombreNomina = n => fileName(n.archivo, n.fuente);
 
 // Estado visible de una nómina en la bitácora.
 export function nomStatus(n, feriados = [], ahora = Date.now()) {
