@@ -8,7 +8,8 @@ import * as paso2 from "./ui/paso2.js";
 import * as paso3 from "./ui/paso3.js";
 import * as paso4 from "./ui/paso4.js";
 import * as config from "./ui/config.js";
-import { activeFuentes } from "./formato.js";
+import * as tema from "./ui/tema.js";
+import { activeFuentes, money } from "./formato.js";
 
 // ---------- pantallas ----------
 function pantalla(modo, texto = "") {
@@ -36,6 +37,7 @@ function go(n) {
 function renderAll() {
   if (!todoListo()) return;
   $("cargando").hidden = true;
+  renderEstado();
   $("cntProv").textContent = Object.keys(st.maestro).length; $("cntDocs").textContent = st.docs.filter(d => d.sel).length + "/" + st.docs.length;
   paso2.renderFuentes(); paso1.renderProv(); paso2.renderDocs(); paso3.syncCampos();
   const errs = activeFuentes(st.docs, st.config.fuentes).map(paso3.construir).reduce((s, r) => s + r.errs, 0);
@@ -44,6 +46,19 @@ function renderAll() {
   paso4.renderBitCount(); if ($("p4").classList.contains("on")) paso4.renderBit();
   if ($("p5").classList.contains("on")) config.renderConfig();
 }
+// Tarjeta de estado de cada encabezado: próxima nómina y datos en tiempo real.
+function renderEstado() {
+  const pend = st.docs.filter(d => d.sel);
+  const hora = new Date().toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" });
+  const t = `Próxima nómina N° ${st.nextNum}`;
+  const s = `${pend.length} documento${pend.length === 1 ? "" : "s"} marcado${pend.length === 1 ? "" : "s"} · ${money(pend.reduce((a, d) => a + (d.monto || 0), 0))} · En tiempo real, ${hora}`;
+  document.querySelectorAll('[data-estado="t"]').forEach(e => e.textContent = t);
+  document.querySelectorAll('[data-estado="s"]').forEach(e => e.textContent = s);
+}
+
+// Nombre para mostrar a partir del correo: wilson.rojas@… → Wilson Rojas.
+const nombreDe = email => email.split("@")[0].split(/[._-]+/).filter(Boolean).map(w => w[0].toUpperCase() + w.slice(1)).join(" ");
+
 vista.renderAll = renderAll;
 vista.go = go;
 
@@ -51,7 +66,7 @@ vista.go = go;
 document.querySelectorAll(".steps button").forEach(b => b.addEventListener("click", () => go(b.dataset.step)));
 // Configuración abre y cierra, volviendo al paso en que se estaba.
 $("btnConfig").onclick = () => { if ($("p5").classList.contains("on")) go(prefs.lastStep || "1"); else { prefs.lastStep = prefs.step; go(5) } };
-[paso1, paso2, paso3, paso4, config].forEach(m => m.init());
+[tema, paso1, paso2, paso3, paso4, config].forEach(m => m.init());
 
 let errorMostrado = null;
 alCambiar(() => {
@@ -95,7 +110,10 @@ if (!configurado) {
     try {
       if (!(await verificarAcceso(user.email))) { pantalla("sinacceso", `La cuenta ${user.email} no tiene acceso a este panel. Pide que la agreguen a la lista de acceso (pAllowed).`); return }
     } catch (e) { pantalla("sinacceso", "No se pudo verificar el acceso: " + mensajeError(e)); return }
-    $("usuarioEmail").textContent = user.email + (st.admin ? " · admin" : "");
+    $("usuarioNombre").textContent = nombreDe(user.email);
+    $("usuarioInicial").textContent = nombreDe(user.email).charAt(0);
+    $("usuarioRol").textContent = st.admin ? "Administrador" : "Finanzas";
+    $("usuario").title = user.email;
     pantalla("app"); $("cargando").hidden = false;
     suscribir();
     go(["1", "2", "3", "4", "5"].includes(prefs.step) ? prefs.step : "1");

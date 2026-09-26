@@ -35,7 +35,11 @@ export function init() {
 
 export function renderBitCount() {
   const act = st.nominas.map(status).filter(s => ["generada", "revisar", "reintegrar"].includes(s.k)).length;
-  $("cntBit").textContent = act ? act + " por atender" : (st.nominas.length || "");
+  // Como en Control de DC: solo el número; ámbar si hay nóminas por atender.
+  const c = $("cntBit");
+  c.textContent = act || st.nominas.length || "";
+  c.dataset.alerta = act ? "1" : "";
+  c.title = act ? `${act} nómina${act > 1 ? "s" : ""} por atender` : `${st.nominas.length} nóminas en la bitácora`;
 }
 
 export function renderBit() {

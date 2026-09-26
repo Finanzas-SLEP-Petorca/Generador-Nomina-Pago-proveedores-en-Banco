@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
 <title>Panel Impresora de Pago Proveedores BancoEstado</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="icon" type="image/png" href="assets/logo_slep_petorca.png">
+<!-- Tema elegido (Claro/Oscuro/Sistema) aplicado antes de pintar, para no parpadear -->
+<script>try{var t=localStorage.getItem("pago.tema");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
 <link rel="stylesheet" href="css/panel.css">
 <!-- SheetJS y JSZip con versión fijada (copias en vendor/) -->
 <script src="vendor/xlsx-0.18.5.full.min.js" defer></script>
@@ -15,22 +15,37 @@
 <script type="module" src="js/app.js"></script>
 </head>
 <body>
-<div class="wrap">
-<header class="topbar">
-  <div>
-    <h1>Panel Impresora de Pago Proveedores BancoEstado</h1>
-    <p>Arma el archivo de carga masiva (formato DET-SUBDET de 9 columnas) cruzando tu maestro de proveedores con los documentos a pagar, con una nómina por fuente de financiamiento. Los datos se guardan en Firebase y los comparte el equipo de Finanzas.</p>
-  </div>
-  <div class="user" id="usuario" hidden>
-    <span class="who" id="usuarioEmail"></span>
-    <button class="btn small" id="btnConfig" aria-pressed="false">Configuración</button>
-    <button class="btn small" id="btnSalir">Salir</button>
+<header class="appbar">
+  <div class="appbar-in">
+    <div class="marca">
+      <img class="logo-slep" src="assets/logo_slep_petorca.png" alt="Servicio Local de Educación Pública Petorca">
+      <div class="marca-txt"><b>Panel Impresora de Pago Proveedores BancoEstado</b><span>Nóminas de carga masiva DET-SUBDET · Finanzas</span></div>
+    </div>
+    <div class="acciones">
+      <div class="user" id="usuario" hidden>
+        <span class="avatar" id="usuarioInicial" aria-hidden="true"></span>
+        <span class="who"><b id="usuarioNombre"></b><span id="usuarioRol"></span></span>
+        <button class="btn icon" id="btnConfig" aria-pressed="false" title="Configuración"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 4h-7"/><path d="M10 4H3"/><path d="M21 12h-9"/><path d="M8 12H3"/><path d="M21 20h-5"/><path d="M12 20H3"/><path d="M14 2v4"/><path d="M8 10v4"/><path d="M16 18v4"/></svg><span class="sr">Configuración</span></button>
+        <button class="btn icon" id="btnSalir" title="Salir"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg><span class="sr">Salir</span></button>
+      </div>
+      <div class="selector-tema" role="group" aria-label="Tema de colores">
+        <button data-tema="light" title="Tema claro" aria-pressed="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg><span class="sr">Claro</span></button>
+        <button data-tema="dark" title="Tema oscuro" aria-pressed="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg><span class="sr">Oscuro</span></button>
+        <button data-tema="system" title="Igual que el sistema operativo" aria-pressed="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg><span class="sr">Sistema</span></button>
+      </div>
+      <div class="logos-gob">
+        <img class="edp" src="assets/logo_educacion_publica.png" alt="Educación Pública, Ministerio de Educación">
+        <img class="mineduc" src="assets/logo_mineduc.png" alt="Ministerio de Educación, Gobierno de Chile">
+      </div>
+    </div>
   </div>
 </header>
 
+<div class="wrap">
 <!-- ACCESO -->
 <section class="card acceso" id="acceso">
-  <h2>Acceso</h2>
+  <p class="eyebrow">Finanzas · SLEP Petorca</p>
+  <h1 class="titulo">Ingreso al <em>panel</em></h1>
   <p class="sub" id="accesoMsg">Cargando…</p>
   <div class="row" id="accesoForm" hidden>
     <input id="accesoEmail" type="email" placeholder="nombre.apellido@sleppetorca.gob.cl" autocomplete="email" style="max-width:320px">
@@ -43,14 +58,18 @@
 <p class="loading" id="cargando">Cargando datos de Firestore…</p>
 
 <nav class="steps" role="tablist">
-  <button role="tab" data-step="1" aria-selected="true"><span class="n">1</span><span class="lbl">Proveedores</span><span class="cnt" id="cntProv">0</span></button>
-  <button role="tab" data-step="2" aria-selected="false"><span class="n">2</span><span class="lbl">Documentos a pagar</span><span class="cnt" id="cntDocs">0</span></button>
-  <button role="tab" data-step="3" aria-selected="false"><span class="n">3</span><span class="lbl">Revisar y generar</span><span class="cnt" id="cntErr"></span></button>
-  <button role="tab" data-step="4" aria-selected="false"><span class="n">4</span><span class="lbl">Bitácora de nóminas</span><span class="cnt" id="cntBit"></span></button>
+  <button role="tab" data-step="1" aria-selected="true"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span class="lbl">Proveedores</span><span class="cnt" id="cntProv">0</span></button>
+  <button role="tab" data-step="2" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg><span class="lbl">Documentos a pagar</span><span class="cnt" id="cntDocs">0</span></button>
+  <button role="tab" data-step="3" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 22h18"/><path d="M6 18v-7"/><path d="M10 18v-7"/><path d="M14 18v-7"/><path d="M18 18v-7"/><path d="m12 2 8 5H4Z"/></svg><span class="lbl">Revisar y generar</span><span class="cnt" id="cntErr"></span></button>
+  <button role="tab" data-step="4" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg><span class="lbl">Bitácora de nóminas</span><span class="cnt" id="cntBit"></span></button>
 </nav>
 
 <!-- STEP 1 -->
 <section class="panel on" id="p1">
+  <div class="pagehead">
+    <div><h1 class="titulo">Maestro de <em>proveedores</em></h1><p>Datos bancarios de cada beneficiario, validados con las reglas del instructivo BancoEstado.</p></div>
+    <div class="estado vivo"><b data-estado="t"></b><span data-estado="s"></span></div>
+  </div>
   <div class="card">
     <h2 id="provFormTitle">Agregar proveedor</h2>
     <p class="sub">Datos bancarios del beneficiario. Se guardan una vez y se reutilizan en cada nómina.</p>
@@ -87,7 +106,7 @@
 
   <div class="card">
     <div class="row" style="margin-top:0;justify-content:space-between">
-      <h2 style="margin:0">Maestro de proveedores</h2>
+      <h2 style="margin:0">Proveedores registrados</h2>
       <input id="search" placeholder="Buscar por RUT o nombre" style="max-width:280px">
     </div>
     <div class="tablebox"><table>
@@ -100,6 +119,10 @@
 
 <!-- STEP 2 -->
 <section class="panel" id="p2">
+  <div class="pagehead">
+    <div><h1 class="titulo">Documentos <em>a pagar</em></h1><p>Facturas y boletas pendientes por fuente de financiamiento. Solo las marcadas entran en la nómina.</p></div>
+    <div class="estado vivo"><b data-estado="t"></b><span data-estado="s"></span></div>
+  </div>
   <div class="card">
     <h2>Fuentes de financiamiento</h2>
     <p class="sub">Cada fuente genera su propia nómina para el banco. Agrega las que uses.</p>
@@ -167,6 +190,10 @@
 
 <!-- STEP 3 -->
 <section class="panel" id="p3">
+  <div class="pagehead">
+    <div><h1 class="titulo">Revisar y <em>generar</em></h1><p>Una nómina por fuente, con sus validaciones, la vista previa y el archivo de carga para el banco.</p></div>
+    <div class="estado vivo"><b data-estado="t"></b><span data-estado="s"></span></div>
+  </div>
   <div class="card">
     <h2>Nóminas por fuente</h2>
     <p class="sub">Solo documentos marcados. Toca una fuente para revisarla y descargar su archivo.</p>
@@ -180,10 +207,10 @@
 
   <div class="card">
     <h2 id="curTitle">Nómina</h2>
-    <div class="figures">
-      <div><b id="sBen">0</b><span>beneficiarios</span></div>
-      <div><b id="sDocs">0</b><span>documentos</span></div>
-      <div><b id="sTotal">$0</b><span>total a transferir</span></div>
+    <div class="kpis">
+      <div class="kpi hero"><span class="kpi-t">Total a transferir</span><b id="sTotal">$0</b><small>Suma de los pagos de la fuente, con las notas de crédito descontadas</small></div>
+      <div class="kpi"><span class="kpi-t">Beneficiarios</span><b id="sBen">0</b><small>pagos en el archivo</small></div>
+      <div class="kpi"><span class="kpi-t">Documentos</span><b id="sDocs">0</b><small>documentos marcados</small></div>
     </div>
     <ul class="issues" id="issues"></ul>
   </div>
@@ -215,9 +242,13 @@
 
 <!-- STEP 4 -->
 <section class="panel" id="p4">
+  <div class="pagehead">
+    <div><h1 class="titulo">Bitácora de <em>nóminas</em></h1><p>Carga en BancoEstado, resultado de cada pago, rechazos y reintegros, con su historial.</p></div>
+    <div class="estado vivo"><b data-estado="t"></b><span data-estado="s"></span></div>
+  </div>
   <div class="card">
     <div class="row" style="margin-top:0;justify-content:space-between">
-      <h2 style="margin:0">Bitácora de nóminas</h2>
+      <h2 style="margin:0">Nóminas generadas</h2>
       <span class="row" style="margin-top:0"><button class="btn" id="btnBackup" title="Todo el panel en un archivo, para respaldo">Exportar respaldo (.json)</button><button class="btn" id="btnBitCsv">Exportar bitácora (.csv)</button></span>
     </div>
     <p class="sub" style="margin-top:4px">Cada nómina generada queda aquí con sus documentos. Márcala como cargada al subirla a BancoEstado y registra el resultado cuando el banco lo informe (día hábil siguiente, desde las 14:00).</p>
@@ -239,8 +270,12 @@
 
 <!-- CONFIGURACIÓN -->
 <section class="panel" id="p5">
+  <div class="pagehead">
+    <div><h1 class="titulo">Configuración <em>compartida</em></h1><p>Valores que usa todo el equipo: prefijo del archivo, email por defecto, feriados y respaldos.</p></div>
+    <div class="estado vivo"><b data-estado="t"></b><span data-estado="s"></span></div>
+  </div>
   <div class="card">
-    <h2>Configuración compartida</h2>
+    <h2>Archivo de carga</h2>
     <p class="sub">Se guarda en Firestore (pago_config/general) y vale para todo el equipo.</p>
     <div class="grid">
       <label class="wide">Prefijo del archivo (AAAAMMDD = fecha del día)<input id="cPrefijo" autocomplete="off"></label>

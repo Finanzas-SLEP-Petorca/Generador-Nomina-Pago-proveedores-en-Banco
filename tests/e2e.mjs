@@ -76,11 +76,11 @@ try {
   log("usuario fuera de pAllowed(): ve 'sin acceso' y no la app");
 
   const A = await panel(ADMIN); await listo(A);
-  assert.match(await A.textContent("#usuarioEmail"), /admin/);
+  assert.match(await A.textContent("#usuarioRol"), /Administrador/);
   const U = await panelEnlace(USUARIO); await listo(U);
   assert.equal(new URL(U.url()).search, "?emulador"); // se limpia el código del enlace
   log("acceso por enlace al correo: el usuario entra; el de fuera de la lista ve 'sin acceso'");
-  assert.doesNotMatch(await U.textContent("#usuarioEmail"), /admin/);
+  assert.doesNotMatch(await U.textContent("#usuarioRol"), /Administrador/);
   log("admin y usuario entran; la sonda detecta al administrador");
 
   // ---------- paso 1: pegar planilla anterior del banco ----------
@@ -235,8 +235,21 @@ try {
 
   // ---------- capturas ----------
   await A.click('.steps button[data-step="4"]'); await A.click('#tbBit tr[data-id="1"]');
+  await A.click('[data-tema="light"]');
   await A.screenshot({ path: AQUI + "escritorio_paso4.png", fullPage: true });
+  await A.click('.steps button[data-step="3"]'); await A.screenshot({ path: AQUI + "escritorio_paso3.png", fullPage: true });
+  await A.click('[data-tema="dark"]');
+  assert.equal(await A.evaluate(() => document.documentElement.dataset.theme), "dark");
+  await A.screenshot({ path: AQUI + "escritorio_paso3_oscuro.png", fullPage: true });
+  await A.click('.steps button[data-step="4"]'); await A.screenshot({ path: AQUI + "escritorio_paso4_oscuro.png", fullPage: true });
+  await A.reload(); await listo(A);
+  assert.equal(await A.evaluate(() => document.documentElement.dataset.theme), "dark"); // se recuerda al recargar
+  await A.click('[data-tema="system"]');
+  assert.equal(await A.evaluate(() => document.documentElement.dataset.theme), undefined);
+  log("tema claro/oscuro/sistema: cambia, se recuerda al recargar y vuelve al del sistema");
+  await A.click('.steps button[data-step="4"]');
   const M = await panel(USUARIO, true); await listo(M);
+  await M.screenshot({ path: AQUI + "movil_paso1.png", fullPage: false });
   await M.click('.steps button[data-step="2"]'); await M.screenshot({ path: AQUI + "movil_paso2.png", fullPage: false });
   await M.click('.steps button[data-step="3"]'); await M.screenshot({ path: AQUI + "movil_paso3.png", fullPage: false });
   const ancho = await M.evaluate(() => document.documentElement.scrollWidth);

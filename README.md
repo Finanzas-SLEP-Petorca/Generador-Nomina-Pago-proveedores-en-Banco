@@ -8,7 +8,7 @@ Panel del Servicio Local de Educación Pública de Petorca para armar las nómin
 
 ```
 index.html                  Panel (4 pasos + Configuración)
-css/panel.css               Estilos (paleta y tipografía del panel original)
+css/panel.css               Estilos: mismo sistema visual que Control de DC y Facturación, tema claro y oscuro
 js/firebase-config.js       firebaseConfig del proyecto (el mismo de las otras apps)
 js/firebase.js              Inicialización, acceso por enlace al correo, firma de escrituras
 js/catalogos.js             Bancos, formas de pago, sectores y tipos de documento
@@ -17,7 +17,7 @@ js/importar.js              Pegar desde Excel, importar xls/xlsx/csv/txt, planil
 js/excel.js                 Excel BancoEstado idéntico y plantilla de documentos
 js/datos.js                 Firestore: suscripciones, transacciones, historial, migración
 js/ui/*.js                  Pasos 1 a 4 y Configuración
-assets/                     Plantillas .xlsx vacías y logo
+assets/                     Plantillas .xlsx vacías y logos (SLEP Petorca, Educación Pública, Mineduc, BancoEstado)
 vendor/                     SheetJS 0.18.5 y JSZip 3.10.1 (versiones fijadas)
 firestore/bloque_pago.rules Bloque de reglas del panel (con correos marcadores)
 referencia/                 Panel anterior (especificación viva)
@@ -127,6 +127,18 @@ Toda escritura lleva `updatedBy` (correo) y `updatedAt` (hora del servidor). El 
 Tamaño: una nómina ocupa cerca de 300 bytes por documento. Con 500 documentos pesa unos 150 KB; el límite de 1 MB de Firestore recién se acercaría con unos 3.000 documentos en una sola nómina.
 
 Las preferencias de interfaz quedan en `localStorage`: último paso abierto, filtros, fuente por defecto al pegar y "agrupar". Los datos no se guardan en el navegador: Firestore usa caché en memoria.
+
+## Diseño
+
+El panel usa el mismo sistema visual que **Control de DC y Facturación**:
+
+- barra superior con los logos de SLEP Petorca, Educación Pública y Mineduc;
+- pestañas flotantes con íconos y contadores;
+- títulos de sección en dos tonos (azul marino y azul);
+- tarjetas blancas redondeadas y tarjetas de colores para los indicadores;
+- tipografía Arial.
+
+El selector **Claro / Oscuro / Sistema** de la barra superior funciona igual que en el Visor SAF/SPYCG. La elección se guarda en el navegador. La vista previa de la planilla BancoEstado mantiene siempre los colores oficiales del banco.
 
 ## Diferencias con el panel anterior
 
