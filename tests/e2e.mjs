@@ -37,6 +37,20 @@ async function panel(email, movil = false) {
   await p.evaluate(e => window.__entrarEmulador(e), email);
   return p;
 }
+// Acceso real por enlace al correo: el emulador de Auth guarda los enlaces enviados.
+async function panelEnlace(email) {
+  const ctx = await contexto(); const p = await ctx.newPage();
+  p.on("pageerror", e => console.log("  [pageerror " + email + "]", e.message));
+  p.on("dialog", d => d.accept());
+  await p.goto(BASE + "/?emulador");
+  await p.waitForSelector("#accesoForm:not([hidden])");
+  await p.fill("#accesoEmail", email); await p.click("#btnEntrar");
+  await p.waitForFunction(() => document.getElementById("accesoMsg").textContent.startsWith("Enviamos un enlace"));
+  const { oobCodes } = await (await fetch("http://127.0.0.1:9099/emulator/v1/projects/demo-pago/oobCodes")).json();
+  const enlace = oobCodes.filter(c => c.email === email && c.requestType === "EMAIL_SIGNIN").pop().oobLink;
+  await p.goto(enlace); // el emulador redirige al panel con el código del enlace
+  return p;
+}
 const listo = p => p.waitForFunction(() => !document.getElementById("app").hidden && document.getElementById("cargando").hidden);
 const toastTxt = p => p.textContent("#toast");
 async function descarga(p, accion) { const [d] = await Promise.all([p.waitForEvent("download"), accion()]); return { nombre: d.suggestedFilename(), bytes: readFileSync(await d.path()) } }
@@ -55,7 +69,7 @@ const planilla = lineas.join("\r\n") + "\r\n";
 
 try {
   // ---------- acceso ----------
-  const fuera = await panel(FUERA);
+  const fuera = await panelEnlace(FUERA);
   await esperar(fuera, () => !document.getElementById("btnSalirAcceso").hidden);
   assert.match(await fuera.textContent("#accesoMsg"), /no tiene acceso/);
   assert.equal(await fuera.isVisible("#app"), false);
@@ -63,7 +77,9 @@ try {
 
   const A = await panel(ADMIN); await listo(A);
   assert.match(await A.textContent("#usuarioEmail"), /admin/);
-  const U = await panel(USUARIO); await listo(U);
+  const U = await panelEnlace(USUARIO); await listo(U);
+  assert.equal(new URL(U.url()).search, "?emulador"); // se limpia el código del enlace
+  log("acceso por enlace al correo: el usuario entra; el de fuera de la lista ve 'sin acceso'");
   assert.doesNotMatch(await U.textContent("#usuarioEmail"), /admin/);
   log("admin y usuario entran; la sonda detecta al administrador");
 

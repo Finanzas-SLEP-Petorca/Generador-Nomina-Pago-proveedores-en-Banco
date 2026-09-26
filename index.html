@@ -32,10 +32,11 @@
 <section class="card acceso" id="acceso">
   <h2>Acceso</h2>
   <p class="sub" id="accesoMsg">Cargando…</p>
-  <div class="row">
-    <button class="btn primary" id="btnEntrar" hidden>Entrar con Google</button>
-    <button class="btn" id="btnSalirAcceso" hidden>Salir y usar otra cuenta</button>
+  <div class="row" id="accesoForm" hidden>
+    <input id="accesoEmail" type="email" placeholder="nombre.apellido@sleppetorca.gob.cl" autocomplete="email" style="max-width:320px">
+    <button class="btn primary" id="btnEntrar">Enviar enlace de acceso</button>
   </div>
+  <div class="row"><button class="btn" id="btnSalirAcceso" hidden>Salir y usar otro correo</button></div>
 </section>
 
 <div id="app" hidden>

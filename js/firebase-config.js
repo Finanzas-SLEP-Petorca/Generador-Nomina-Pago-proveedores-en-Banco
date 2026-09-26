@@ -6,12 +6,11 @@
 // Es pública por diseño: la seguridad la dan las reglas de Firestore
 // (firestore/bloque_pago.rules) y la lista de acceso pAllowed().
 
-// PEGAR AQUÍ la configuración: reemplaza cada "PEGAR_AQUI".
 export const firebaseConfig = {
-  apiKey: "PEGAR_AQUI",
-  authDomain: "PEGAR_AQUI",
-  projectId: "PEGAR_AQUI",
-  storageBucket: "PEGAR_AQUI",
-  messagingSenderId: "PEGAR_AQUI",
-  appId: "PEGAR_AQUI"
+  apiKey: "AIzaSyBfYE16R3s3EVfn8A3dEUROJjC1vWdQ118",
+  authDomain: "slep-petorca-finanzas-permisos.firebaseapp.com",
+  projectId: "slep-petorca-finanzas-permisos",
+  storageBucket: "slep-petorca-finanzas-permisos.firebasestorage.app",
+  messagingSenderId: "1032729181983",
+  appId: "1:1032729181983:web:3a33171e171ea6adc4ba2a"
 };

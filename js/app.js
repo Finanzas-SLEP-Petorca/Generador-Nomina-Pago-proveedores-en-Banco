@@ -1,6 +1,6 @@
 // Punto de entrada: sesión, acceso, suscripciones y render general.
 
-import { configurado, EMU, entrar, salir, alCambiarUsuario } from "./firebase.js";
+import { configurado, EMU, enviarEnlace, completarEnlace, salir, alCambiarUsuario } from "./firebase.js";
 import { st, alCambiar, todoListo, verificarAcceso, suscribir, desuscribir } from "./datos.js";
 import { $, toast, vista, prefs, guardarPrefs, mensajeError } from "./ui/comun.js";
 import * as paso1 from "./ui/paso1.js";
@@ -16,7 +16,7 @@ function pantalla(modo, texto = "") {
   $("app").hidden = modo !== "app";
   $("usuario").hidden = modo !== "app";
   $("accesoMsg").textContent = texto;
-  $("btnEntrar").hidden = modo !== "login";
+  $("accesoForm").hidden = modo !== "login";
   $("btnSalirAcceso").hidden = modo !== "sinacceso";
 }
 
@@ -64,11 +64,17 @@ alCambiar(() => {
 });
 
 $("btnEntrar").onclick = async () => {
+  const email = $("accesoEmail").value.trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { $("accesoMsg").textContent = "Escribe un correo válido."; return }
   $("btnEntrar").disabled = true;
-  try { await entrar() }
-  catch (e) { if (e.code !== "auth/popup-closed-by-user" && e.code !== "auth/cancelled-popup-request") $("accesoMsg").textContent = "No se pudo iniciar sesión: " + (e.code === "auth/unauthorized-domain" ? "este dominio no está autorizado en Firebase Authentication (ver README)." : mensajeError(e)) }
-  finally { $("btnEntrar").disabled = false }
+  try {
+    await enviarEnlace(email);
+    $("accesoMsg").textContent = `Enviamos un enlace de acceso a ${email}. Revisa tu bandeja (también Spam) y ábrelo en este mismo navegador. El enlace vence en 1 hora.`;
+  } catch (e) {
+    $("accesoMsg").textContent = "No se pudo enviar el enlace: " + (e.code === "auth/unauthorized-continue-uri" || e.code === "auth/unauthorized-domain" ? "este dominio no está autorizado en Firebase Authentication (ver README)." : mensajeError(e));
+  } finally { $("btnEntrar").disabled = false }
 };
+$("accesoEmail").onkeydown = e => { if (e.key === "Enter") $("btnEntrar").click() };
 const cerrar = async () => { desuscribir(); await salir() };
 $("btnSalir").onclick = cerrar; $("btnSalirAcceso").onclick = cerrar;
 
@@ -78,7 +84,13 @@ if (!configurado) {
   if (EMU) document.body.classList.add("emu");
   pantalla("cargando", "Conectando…");
   alCambiarUsuario(async user => {
-    if (!user) { st.email = ""; st.admin = false; pantalla("login", "Entra con tu cuenta institucional de Google."); return }
+    if (!user) {
+      st.email = ""; st.admin = false;
+      try { if (await completarEnlace()) return } // al entrar, onAuthStateChanged vuelve a llamar
+      catch (e) { pantalla("login", "El enlace no es válido o venció. Pide uno nuevo."); return }
+      pantalla("login", "Escribe tu correo institucional y te enviaremos un enlace para entrar.");
+      return;
+    }
     pantalla("cargando", "Verificando acceso de " + user.email + "…");
     try {
       if (!(await verificarAcceso(user.email))) { pantalla("sinacceso", `La cuenta ${user.email} no tiene acceso a este panel. Pide que la agreguen a la lista de acceso (pAllowed).`); return }

@@ -9,8 +9,8 @@ Panel del Servicio Local de Educación Pública de Petorca para armar las nómin
 ```
 index.html                  Panel (4 pasos + Configuración)
 css/panel.css               Estilos (paleta y tipografía del panel original)
-js/firebase-config.js       firebaseConfig  ← pegar aquí la configuración
-js/firebase.js              Inicialización, Google con signInWithPopup, firma de escrituras
+js/firebase-config.js       firebaseConfig del proyecto (el mismo de las otras apps)
+js/firebase.js              Inicialización, acceso por enlace al correo, firma de escrituras
 js/catalogos.js             Bancos, formas de pago, sectores y tipos de documento
 js/formato.js               Normalización, validaciones, armado de la nómina y .txt
 js/importar.js              Pegar desde Excel, importar xls/xlsx/csv/txt, planilla del banco
@@ -22,20 +22,18 @@ vendor/                     SheetJS 0.18.5 y JSZip 3.10.1 (versiones fijadas)
 firestore/bloque_pago.rules Bloque de reglas del panel (con correos marcadores)
 referencia/                 Panel anterior (especificación viva)
 tests/                      Pruebas (no se publican)
-.github/workflows/          Publicación en Pages y pruebas
+.github/workflows/          Pruebas automáticas en GitHub
 ```
 
 Se usan módulos ES nativos. No hay framework ni paso de compilación.
 
 ## Puesta en marcha
 
-### 1. Pegar la configuración de Firebase
+### 1. Configuración de Firebase (ya lista)
 
-1. En la consola de Firebase, abre *Configuración del proyecto → General → Tus apps*. Es el mismo proyecto de Calendario de permisos, Monitoreo SEP, Déficit P02 y Visor SAF/SPYCG.
-2. Copia el objeto `firebaseConfig` de la app web que ya usan esas apps.
-3. Pega cada valor en `js/firebase-config.js`, reemplazando los `"PEGAR_AQUI"`.
+`js/firebase-config.js` ya trae la configuración del proyecto `slep-petorca-finanzas-permisos`. Es la misma de Calendariopermisos y del Visor SAF/SPYCG. Es pública por diseño: la seguridad la dan las reglas de Firestore.
 
-Esa configuración es pública por diseño: la seguridad la dan las reglas de Firestore. Mientras quede algún `PEGAR_AQUI`, el panel muestra el aviso "Falta la configuración de Firebase".
+El acceso es igual al de esas apps: la persona escribe su correo, recibe un enlace (revisar también Spam) y lo abre en el mismo navegador. El enlace vence en 1 hora. El método *Correo electrónico → Vínculo del correo electrónico (acceso sin contraseña)* ya está habilitado en el proyecto porque lo usan las otras apps.
 
 ### 2. Pegar el bloque de reglas en Firestore
 
@@ -63,17 +61,19 @@ Respecto del bloque original, se agregó una línea en `pago_nominas`: solo se p
 
 1. Abre *Authentication → Settings → Dominios autorizados → Agregar dominio*.
 2. Agrega `finanzas-slep-petorca.github.io` (en general, `<usuario u organización>.github.io`, sin `https://` ni la ruta del repositorio).
-3. Confirma que el proveedor **Google** esté habilitado en *Authentication → Método de acceso*. Las otras apps ya lo usan.
+3. En *Authentication → Método de acceso*, el proveedor **Correo electrónico/contraseña** debe tener activado el **vínculo del correo electrónico (acceso sin contraseña)**. Las otras apps ya lo usan.
 
-Si falta este paso, al entrar aparece "este dominio no está autorizado en Firebase Authentication".
+Si falta este paso, al pedir el enlace aparece "este dominio no está autorizado en Firebase Authentication".
 
 ### 4. Activar GitHub Pages
 
-1. En GitHub, abre *Settings → Pages → Build and deployment → Source* y elige **GitHub Actions**.
-2. Haz merge a `main`. El workflow `Publicar en GitHub Pages` corre la prueba de formato y publica solo `index.html`, `css/`, `js/`, `assets/` y `vendor/`.
-3. El panel queda en `https://finanzas-slep-petorca.github.io/Generador-Nomina-Pago-proveedores-en-Banco/`.
+1. En GitHub, abre *Settings → Pages → Build and deployment*.
+2. Elige **Source: Deploy from a branch**, **Branch: main** y carpeta **/ (root)**. Pulsa **Save**.
+3. En uno o dos minutos el panel queda en `https://finanzas-slep-petorca.github.io/Generador-Nomina-Pago-proveedores-en-Banco/`.
 
-Se publica con Actions y no "desde la rama" para que `tests/`, `referencia/` y `firestore/` no queden servidos como páginas.
+Cada cambio que llega a `main` se publica solo. El archivo `.nojekyll` evita que GitHub procese el sitio con Jekyll.
+
+Con esta opción también quedan servidos `tests/`, `referencia/`, `firestore/` y este README. Ninguno tiene datos reales (solo ejemplos ficticios y correos marcadores). Los datos viven en Firestore y solo se leen con una sesión autorizada.
 
 ### 5. Migrar los datos del panel anterior (una sola vez)
 
@@ -104,7 +104,7 @@ El acceso lo definen **solo** las reglas de Firestore. El panel no guarda una li
 4. Pulsa **Publicar**. Firebase aplica las reglas en un par de minutos; las sesiones que ya estaban abiertas pueden tardar hasta unos 10. A quien se quita le aparece "sin acceso" cuando Firestore le rechaza la siguiente lectura o al recargar.
 5. Actualiza también tu copia local `firestore/bloque_pago.local.rules`.
 
-Solo entran cuentas con correo verificado (`email_verified`), como las de Google. Esta lista es independiente de `isAllowed()` de las otras apps: estar en una no da acceso a la otra.
+Solo entran cuentas con correo verificado (`email_verified`); el acceso por enlace verifica el correo. Esta lista es independiente de `isAllowed()` de las otras apps: estar en una no da acceso a la otra.
 
 ## Modelo de datos (Firestore)
 
@@ -170,7 +170,7 @@ cd tests && npm run emuladores                   # Auth 9099 y Firestore 8080
 python3 -m http.server 5000 --bind 127.0.0.1     # desde la raíz del repositorio, en otra terminal
 ```
 
-Abre `http://localhost:5000/?emulador`. El título muestra "EMULADOR". *Entrar con Google* abre la ventana de cuentas de prueba del emulador: agrega una cuenta con un correo de la lista, por ejemplo `admin1@example.com`. Si la ventana no abre (necesita cargar un script de Google), entra desde la consola del navegador con `__entrarEmulador("admin1@example.com")`. Ese atajo solo existe en modo emulador, en `localhost`; es el que usa `npm run e2e`.
+Abre `http://localhost:5000/?emulador`. El título muestra "EMULADOR". Escribe un correo de la lista de prueba (por ejemplo `admin1@example.com`) y pide el enlace. El emulador no envía correos: el enlace aparece en la terminal de los emuladores; ábrelo en el mismo navegador. También puedes entrar desde la consola del navegador con `__entrarEmulador("admin1@example.com")`. Ese atajo solo existe en modo emulador, en `localhost`.
 
 ### Prueba manual guiada (checklist)
 
