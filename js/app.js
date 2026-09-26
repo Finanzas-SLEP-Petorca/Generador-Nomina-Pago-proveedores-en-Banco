@@ -9,7 +9,7 @@ import * as paso3 from "./ui/paso3.js";
 import * as paso4 from "./ui/paso4.js";
 import * as config from "./ui/config.js";
 import * as tema from "./ui/tema.js";
-import { activeFuentes, money } from "./formato.js";
+import { activeFuentes, money, nombreDe } from "./formato.js";
 
 // ---------- pantallas ----------
 function pantalla(modo, texto = "") {
@@ -56,8 +56,6 @@ function renderEstado() {
   document.querySelectorAll('[data-estado="s"]').forEach(e => e.textContent = s);
 }
 
-// Nombre para mostrar a partir del correo: wilson.rojas@… → Wilson Rojas.
-const nombreDe = email => email.split("@")[0].split(/[._-]+/).filter(Boolean).map(w => w[0].toUpperCase() + w.slice(1)).join(" ");
 
 vista.renderAll = renderAll;
 vista.go = go;

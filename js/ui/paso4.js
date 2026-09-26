@@ -1,7 +1,7 @@
 // Paso 4: bitácora de nóminas, resultado del banco e historial.
 
 import { M_TIPO, EST_PAGO } from "../catalogos.js";
-import { S, normRut, fmtRut, money, fmtFecha, fmtISO, isoLocal, todayISO, resultDue, fmtDue, diaHabilSiguiente, nomStatus, nombreNomina, toTxt, today } from "../formato.js";
+import { S, normRut, fmtRut, money, fmtFecha, fmtISO, isoLocal, todayISO, resultadoDesde, fmtDue, diaHabilSiguiente, esHabil, nombreDe, nomStatus, nombreNomina, toTxt, today } from "../formato.js";
 import { bankWorkbook } from "../excel.js";
 import { st, aFecha, suscribirHistorial, cargarNomina, guardarCarga, deshacerCarga, resultadoPago, pagarPendientes, volverPendientes, anularNomina, exportarRespaldo } from "../datos.js";
 import { $, esc, toast, accion, descargar, prefs, guardarPrefs, mensajeError } from "./comun.js";
@@ -12,6 +12,8 @@ let histNom = { id: null, lista: [], baja: null };
 
 const status = n => nomStatus(n, st.config.feriados);
 const creada = n => { const d = aFecha(n.creadaAt); return d ? fmtISO(isoLocal(d)) : "" };
+// Nombre corto bajo la fecha en la tabla (el correo completo queda en el título).
+const quien = email => email ? `<span class="hint" style="display:block" title="${esc(email)}">${esc(nombreDe(email))}</span>` : "";
 const normDcQ = v => S(v).toLowerCase().replace(/\s+/g, "");
 
 export function abrirNomina(id) { openNom = id; renderBit() }
@@ -26,8 +28,8 @@ export function init() {
     const nominas = st.nominas;
     if (!nominas.length) { toast("La bitácora está vacía"); return }
     const q = v => { v = S(v); return /[;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v };
-    const rows = [["N NOMINA", "FUENTE", "FECHA GENERACION", "ESTADO NOMINA", "FECHA CARGA", "FECHA PAGO", "N OPERACION", "RUT", "BENEFICIARIO", "MONTO PAGO", "RESULTADO", "MOTIVO RECHAZO", "REINTEGRADO", "N DOC", "TIPO DOC", "FECHA DOC", "MONTO DOC", "DC"]];
-    nominas.slice().sort((a, b) => a.num - b.num).forEach(n => { const s = status(n); n.pagos.forEach(p => p.docs.forEach(d => rows.push([n.num, n.fuente, creada(n), s.t, fmtISO(n.fechaCarga), fmtISO(n.fechaPago), n.operacion, p.rut, p.nombre, p.monto, n.estado === "anulada" ? "Anulada" : EST_PAGO[p.estado], p.motivo, fmtISO(p.reint), d.ndoc, d.tipo, fmtFecha(d.fecha), d.monto, d.dc]))) });
+    const rows = [["N NOMINA", "FUENTE", "FECHA GENERACION", "GENERADA POR", "ESTADO NOMINA", "FECHA CARGA", "CARGADA POR", "FECHA PAGO", "N OPERACION", "RUT", "BENEFICIARIO", "MONTO PAGO", "RESULTADO", "MOTIVO RECHAZO", "REINTEGRADO", "N DOC", "TIPO DOC", "FECHA DOC", "MONTO DOC", "DC"]];
+    nominas.slice().sort((a, b) => a.num - b.num).forEach(n => { const s = status(n); n.pagos.forEach(p => p.docs.forEach(d => rows.push([n.num, n.fuente, creada(n), n.creadaPor, s.t, fmtISO(n.fechaCarga), n.cargadaPor, fmtISO(n.fechaPago), n.operacion, p.rut, p.nombre, p.monto, n.estado === "anulada" ? "Anulada" : EST_PAGO[p.estado], p.motivo, fmtISO(p.reint), d.ndoc, d.tipo, fmtFecha(d.fecha), d.monto, d.dc]))) });
     descargar("bitacora_nominas_" + today() + ".csv", "﻿" + rows.map(r => r.map(q).join(";")).join("\r\n"));
   };
   $("btnBackup").onclick = () => descargar("respaldo_panel_pago_" + today() + ".json", JSON.stringify(exportarRespaldo(), null, 1));
@@ -58,7 +60,7 @@ export function renderBit() {
   const nomMatch = n => !q || n.pagos.some(p => S(p.nombre).toLowerCase().includes(q) || p.docs.some(d => docMatch(p, d))) || String(n.num) === q.replace(/^n.?\s*/, "");
   let list = st2.filter(x => (prefs.bitFuente === "*" || x.n.fuente === prefs.bitFuente) && ($("hAnul").checked || x.s.k !== "anulada") && (!bitView || x.s.k === bitView) && nomMatch(x.n));
   list.sort((a, b) => b.n.num - a.n.num);
-  $("tbBit").innerHTML = list.length ? list.map(({ n, s }) => `<tr class="clickable${n.id === openNom ? " cur" : ""}" data-id="${esc(n.id)}" tabindex="0"><td class="mono"><b>${n.num}</b></td><td>${esc(n.fuente)}</td><td>${creada(n)}</td><td>${n.fechaCarga ? fmtISO(n.fechaCarga) : "—"}</td><td>${n.fechaPago ? fmtISO(n.fechaPago) : "—"}</td><td class="num">${n.pagos.length}</td><td class="num">${money(n.total)}</td><td><span class="tag ${s.c}">${esc(s.t)}</span></td></tr>`).join("")
+  $("tbBit").innerHTML = list.length ? list.map(({ n, s }) => `<tr class="clickable${n.id === openNom ? " cur" : ""}" data-id="${esc(n.id)}" tabindex="0"><td class="mono"><b>${n.num}</b></td><td>${esc(n.fuente)}</td><td>${creada(n)}${quien(n.creadaPor)}</td><td>${n.fechaCarga ? fmtISO(n.fechaCarga) : "—"}${n.fechaCarga ? quien(n.cargadaPor) : ""}</td><td>${n.fechaPago ? fmtISO(n.fechaPago) : "—"}</td><td class="num">${n.pagos.length}</td><td class="num">${money(n.total)}</td><td><span class="tag ${s.c}">${esc(s.t)}</span></td></tr>`).join("")
     : `<tr><td colspan="8" class="empty">${nominas.length ? "Ninguna nómina coincide con el filtro." : "Aún no hay nóminas. Genera la primera en el paso 3."}</td></tr>`;
   $("tbBit").querySelectorAll("tr[data-id]").forEach(tr => { const o = () => { openNom = tr.dataset.id; renderBit(); $("hDetail").scrollIntoView({ behavior: "smooth", block: "start" }) }; tr.onclick = o; tr.onkeydown = e => { if (e.key === "Enter") o() } });
   // trazabilidad de un documento
@@ -97,18 +99,18 @@ function renderNomDetail() {
   box.dataset.id = n.id;
   box.hidden = false; const s = status(n);
   const cargada = n.estado === "cargada", anul = n.estado === "anulada";
-  const due = n.fechaCarga ? resultDue(n.fechaCarga, st.config.feriados) : null;
+  const due = n.fechaCarga ? resultadoDesde(n, st.config.feriados) : null;
   const pend = n.pagos.filter(p => p.estado === "pendiente").length, pag = n.pagos.filter(p => p.estado === "pagado"), rech = n.pagos.filter(p => p.estado === "rechazado");
   box.innerHTML = `
   <div class="row" style="margin-top:0;justify-content:space-between"><h2 style="margin:0">Nómina N° ${n.num}, ${esc(n.fuente)}</h2><span class="tag ${s.c}">${esc(s.t)}</span></div>
-  <p class="due">Generada el ${creada(n)}${n.creadaPor ? " por " + esc(n.creadaPor) : ""}. Archivo ${esc(nombreNomina(n))}.txt. ${n.pagos.length} pago${n.pagos.length === 1 ? "" : "s"} por ${money(n.total)}.${n.fechaPago ? ` Fecha de pago: ${fmtISO(n.fechaPago)}.` : ""}${cargada ? ` Pagado ${money(pag.reduce((a, p) => a + p.monto, 0))}, rechazado ${money(rech.reduce((a, p) => a + p.monto, 0))}, pendiente de resultado ${money(n.pagos.filter(p => p.estado === "pendiente").reduce((a, p) => a + p.monto, 0))}.` : ""}</p>
+  <p class="due">Generada el ${creada(n)}${n.creadaPor ? ` por <b title="${esc(n.creadaPor)}">${esc(nombreDe(n.creadaPor))}</b>` : ""}.${n.fechaCarga ? ` Cargada en BancoEstado el ${fmtISO(n.fechaCarga)}${n.cargadaPor ? ` por <b title="${esc(n.cargadaPor)}">${esc(nombreDe(n.cargadaPor))}</b>` : ""}.` : ""} Archivo ${esc(nombreNomina(n))}.txt. ${n.pagos.length} pago${n.pagos.length === 1 ? "" : "s"} por ${money(n.total)}.${n.fechaPago ? ` Fecha de pago: ${fmtISO(n.fechaPago)}.` : ""}${cargada ? ` Pagado ${money(pag.reduce((a, p) => a + p.monto, 0))}, rechazado ${money(rech.reduce((a, p) => a + p.monto, 0))}, pendiente de resultado ${money(n.pagos.filter(p => p.estado === "pendiente").reduce((a, p) => a + p.monto, 0))}.` : ""}</p>
   <div class="grid">
     <label>Fecha de carga en BancoEstado<input type="date" id="nFecha" value="${n.fechaCarga || todayISO()}" ${anul ? "disabled" : ""}></label>
     <label title="Día en que el banco paga la nómina. Queda registrada aunque después haya pagos rechazados.">Fecha de pago de la nómina<input type="date" id="nFechaPago" value="${n.fechaPago || diaHabilSiguiente(n.fechaCarga || todayISO(), st.config.feriados)}" ${anul ? "disabled" : ""}></label>
     <label>N° de operación o folio (opcional)<input id="nOper" value="${esc(n.operacion)}" ${anul ? "disabled" : ""}></label>
     <label class="wide">Observación<input id="nObs" value="${esc(n.obs)}" ${anul ? "disabled" : ""}></label>
   </div>
-  ${due ? `<p class="hint" style="margin-top:8px">Resultado del banco disponible desde el ${fmtDue(due)} (día hábil siguiente; considera los feriados de Configuración).</p>` : ""}
+  ${due ? `<p class="hint" style="margin-top:8px">Resultado del banco disponible desde el ${fmtDue(due)} (${n.fechaPago ? "14:00 del día de pago de la nómina; si cae en día no hábil, del hábil siguiente" : "día hábil siguiente a la carga"}; considera los feriados de Configuración).</p>` : ""}
   <div class="row">
     ${n.estado === "generada" ? `<button class="btn primary" id="nCargar">Marcar como cargada en BancoEstado</button>` : ""}
     ${cargada ? `<button class="btn" id="nGuardar">Guardar cambios</button>` : ""}
@@ -144,9 +146,10 @@ function renderNomDetail() {
     if (!d.fechaCarga) { toast("Indica la fecha de carga"); return false }
     if (!d.fechaPago) { toast("Indica la fecha de pago de la nómina"); return false }
     if (d.fechaPago < d.fechaCarga) { toast("La fecha de pago no puede ser anterior a la fecha de carga"); return false }
+    if (!esHabil(d.fechaPago, st.config.feriados) && !confirm(`La fecha de pago ${fmtISO(d.fechaPago)} cae en sábado, domingo o feriado. ¿Guardarla igual?`)) return false;
     return true;
   };
-  if (q("nCargar")) q("nCargar").onclick = () => { const d = datosCarga(); if (!fechasOk(d)) return; accion(q("nCargar"), async () => { await cargarNomina(n.id, d); toast(`Nómina N° ${n.num} marcada como cargada el ${fmtISO(d.fechaCarga)}, con pago el ${fmtISO(d.fechaPago)}. Resultado desde el ${fmtDue(resultDue(d.fechaCarga, st.config.feriados))}`) }) };
+  if (q("nCargar")) q("nCargar").onclick = () => { const d = datosCarga(); if (!fechasOk(d)) return; accion(q("nCargar"), async () => { await cargarNomina(n.id, d); toast(`Nómina N° ${n.num} marcada como cargada el ${fmtISO(d.fechaCarga)}, con pago el ${fmtISO(d.fechaPago)}. Resultado desde el ${fmtDue(resultadoDesde(d, st.config.feriados))}`) }) };
   if (q("nGuardar")) q("nGuardar").onclick = () => { const d = datosCarga(); if (!fechasOk(d)) return; accion(q("nGuardar"), async () => { await guardarCarga(n.id, d); toast("Cambios guardados") }) };
   if (q("nPagarRest")) q("nPagarRest").onclick = () => { if (Date.now() < due.getTime() && !confirm("Aún no son las 14:00 del día hábil siguiente a la carga. ¿Marcar igual los pendientes como pagados?")) return; accion(q("nPagarRest"), async () => { await pagarPendientes(n.id); toast("Pagos pendientes marcados como pagados") }) };
   q("nTxt").onclick = () => descargar(nombreNomina(n) + ".txt", toTxt(n.lineas));

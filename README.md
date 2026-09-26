@@ -114,7 +114,7 @@ Solo entran cuentas con correo verificado (`email_verified`); el acceso por enla
 | `pago_config/contador` | `nextNum`: correlativo de nóminas |
 | `pago_proveedores/{rut}` | Maestro. Id = RUT sin puntos ni guion |
 | `pago_documentos/{id}` | Documentos pendientes, con `dc` y `hist` opcionales. El id ordena por fecha de ingreso, así la nómina respeta el orden de carga |
-| `pago_nominas/{num}` | Nóminas: `lineas` como mapas `{tipo, f}`, `pagos` con sus documentos, `fechaCarga` y `fechaPago` (día en que el banco paga la nómina; se mantiene aunque después haya rechazos) |
+| `pago_nominas/{num}` | Nóminas: `lineas` como mapas `{tipo, f}`, `pagos` con sus documentos, `fechaCarga`, `fechaPago` (día en que el banco paga la nómina; se mantiene aunque después haya rechazos), `creadaPor` y `cargadaPor` (quién generó y quién cargó; las reglas exigen que sea quien escribe). El resultado del banco se espera desde las 14:00 del día de pago |
 | `pago_historial/{id}` | Bitácora de acciones; solo se agregan entradas |
 
 Toda escritura lleva `updatedBy` (correo) y `updatedAt` (hora del servidor). El historial registra:

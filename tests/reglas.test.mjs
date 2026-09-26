@@ -155,6 +155,18 @@ test("una nómina anulada no se puede volver a editar; solo se anula si está ge
   await assertFails(deleteDoc(ref1));
 });
 
+test("cargadaPor solo puede ser quien escribe", async () => {
+  const u = db(USUARIO);
+  await generar(u, USUARIO);
+  const ref = doc(u, "pago_nominas/1");
+  await assertFails(updateDoc(ref, { estado: "cargada", fechaCarga: "2026-09-26", fechaPago: "2026-09-29", cargadaPor: ADMIN, cargadaAt: serverTimestamp(), ...firma(USUARIO) }));
+  await assertFails(updateDoc(ref, { estado: "cargada", cargadaPor: USUARIO, cargadaAt: new Date(2020, 0, 1), ...firma(USUARIO) }));
+  await assertSucceeds(updateDoc(ref, { estado: "cargada", fechaCarga: "2026-09-26", fechaPago: "2026-09-29", cargadaPor: USUARIO, cargadaAt: serverTimestamp(), ...firma(USUARIO) }));
+  // Guardar otros cambios no toca cargadaPor; deshacer la carga lo limpia.
+  await assertSucceeds(updateDoc(doc(db(ADMIN), "pago_nominas/1"), { obs: "x", ...firma(ADMIN) }));
+  await assertSucceeds(updateDoc(doc(db(ADMIN), "pago_nominas/1"), { estado: "generada", fechaCarga: "", fechaPago: "", cargadaPor: "", cargadaAt: null, ...firma(ADMIN) }));
+});
+
 test("el historial solo se agrega, firmado por quien escribe", async () => {
   const u = db(USUARIO);
   const h = (extra = {}) => ({ accion: "editar proveedor", ref: "proveedor:1", detalle: "", antes: { cuenta: "1" }, despues: { cuenta: "2" }, autor: USUARIO, createdAt: serverTimestamp(), ...extra });

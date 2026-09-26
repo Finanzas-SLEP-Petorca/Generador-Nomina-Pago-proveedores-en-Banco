@@ -59,6 +59,19 @@ export function resultDue(ymd, feriados = []) {
 }
 // Día hábil siguiente (ISO), saltando fines de semana y feriados.
 export function diaHabilSiguiente(ymd, feriados = []) { return todayISO(resultDue(ymd, feriados)) }
+// ¿Es día hábil? (no sábado, domingo ni feriado)
+export function esHabil(ymd, feriados = []) { const [y, m, d] = ymd.split("-").map(Number); const t = new Date(y, m - 1, d); return t.getDay() !== 0 && t.getDay() !== 6 && !feriados.includes(ymd) }
+// Resultado del banco: 14:00 del día de pago de la nómina (si cae en día no
+// hábil, del hábil siguiente). Las nóminas sin fecha de pago usan la regla
+// anterior: 14:00 del día hábil siguiente a la carga.
+export function resultadoDesde(n, feriados = []) {
+  if (!n.fechaPago) return resultDue(n.fechaCarga, feriados);
+  const [y, m, d] = n.fechaPago.split("-").map(Number); const t = new Date(y, m - 1, d, 14, 0, 0);
+  while (!esHabil(todayISO(t), feriados)) t.setDate(t.getDate() + 1);
+  return t;
+}
+// Nombre para mostrar a partir del correo: juana.perez@… → Juana Perez.
+export const nombreDe = email => S(email).split("@")[0].split(/[._-]+/).filter(Boolean).map(w => w[0].toUpperCase() + w.slice(1)).join(" ");
 export function fmtDue(t) { return DIAS[t.getDay()] + " " + two(t.getDate()) + "/" + two(t.getMonth() + 1) + " 14:00" }
 
 // ---------- validación ----------
@@ -184,7 +197,7 @@ export function nomStatus(n, feriados = [], ahora = Date.now()) {
   if (n.estado === "generada") return { k: "generada", t: "Generada, falta cargar", c: "wrn" };
   const pend = n.pagos.filter(p => p.estado === "pendiente").length;
   const rech = n.pagos.filter(p => p.estado === "rechazado");
-  if (pend) { const due = resultDue(n.fechaCarga, feriados); return ahora < due.getTime() ? { k: "espera", t: "Cargada, resultado desde " + fmtDue(due), c: "neu" } : { k: "revisar", t: "Registrar resultado del banco", c: "err" } }
+  if (pend) { const due = resultadoDesde(n, feriados); return ahora < due.getTime() ? { k: "espera", t: "Cargada, resultado desde " + fmtDue(due), c: "neu" } : { k: "revisar", t: "Registrar resultado del banco", c: "err" } }
   const sinR = rech.filter(p => !p.reint).length;
   if (rech.length) return { k: sinR ? "reintegrar" : "ok", t: `Procesada, ${rech.length} rechazo${rech.length > 1 ? "s" : ""}` + (sinR ? `, ${sinR} por reintegrar` : ""), c: sinR ? "wrn" : "okk" };
   return { k: "ok", t: "Procesada, todo pagado", c: "okk" };

@@ -171,6 +171,17 @@ ok("estado de nóminas y día hábil siguiente (con feriados)", () => {
     }
 });
 
+ok("resultado desde las 14:00 del día de pago", () => {
+  const fer = ["2026-10-12"];
+  const f = n => { const t = F.resultadoDesde(n, fer); return F.todayISO(t) + " " + t.getHours() };
+  assert.equal(f({ fechaCarga: "2026-09-26", fechaPago: "2026-09-29" }), "2026-09-29 14"); // carga sáb, pago mar → mar 14:00
+  assert.equal(f({ fechaCarga: "2026-09-25", fechaPago: "2026-09-26" }), "2026-09-28 14"); // pago sáb → lun
+  assert.equal(f({ fechaCarga: "2026-10-09", fechaPago: "2026-10-12" }), "2026-10-13 14"); // pago feriado → hábil siguiente
+  assert.equal(f({ fechaCarga: "2026-09-25" }), "2026-09-28 14");                          // sin fecha de pago: regla anterior
+  assert.equal(F.esHabil("2026-09-26"), false); assert.equal(F.esHabil("2026-09-29"), true); assert.equal(F.esHabil("2026-10-12", fer), false);
+  assert.equal(F.nombreDe("juana.perez@sleppetorca.gob.cl"), "Juana Perez");
+});
+
 ok("nombre de archivo", () => {
   const d = new Date(2026, 8, 26);
   assert.equal(F.fileName(F.expandPrefijo("AAAAMMDD_PAGO_PROVEEDORES", d), "SEP"), "20260926_PAGO_PROVEEDORES_SEP");

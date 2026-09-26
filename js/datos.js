@@ -275,7 +275,8 @@ const refN = n => "nomina:" + n.num;
 
 export const cargarNomina = (id, datosCarga) => modificarNomina(id, n => {
   if (n.estado !== "generada") throw new Conflicto(`La nómina N° ${n.num} ya no está en estado generada`);
-  return { cambios: { estado: "cargada", ...datosCarga }, hist: [hist("cargar nómina", refN(n), `Cargada en BancoEstado el ${fmtISO(datosCarga.fechaCarga)}, fecha de pago ${fmtISO(datosCarga.fechaPago)}${datosCarga.operacion ? ", operación " + datosCarga.operacion : ""}${datosCarga.obs ? ". " + datosCarga.obs : ""}`, { estado: "generada" }, { estado: "cargada", ...datosCarga })] };
+  // Quién cargó y cuándo: las reglas exigen que cargadaPor sea quien escribe.
+  return { cambios: { estado: "cargada", ...datosCarga, cargadaPor: st.email, cargadaAt: serverTimestamp() }, hist: [hist("cargar nómina", refN(n), `Cargada en BancoEstado el ${fmtISO(datosCarga.fechaCarga)}, fecha de pago ${fmtISO(datosCarga.fechaPago)}${datosCarga.operacion ? ", operación " + datosCarga.operacion : ""}${datosCarga.obs ? ". " + datosCarga.obs : ""}`, { estado: "generada" }, { estado: "cargada", ...datosCarga })] };
 });
 export const guardarCarga = (id, datosCarga) => modificarNomina(id, n => {
   if (n.estado !== "cargada") throw new Conflicto(`La nómina N° ${n.num} no está cargada`);
@@ -287,7 +288,7 @@ export const guardarCarga = (id, datosCarga) => modificarNomina(id, n => {
 });
 export const deshacerCarga = id => modificarNomina(id, n => {
   if (n.estado !== "cargada" || !n.pagos.every(p => p.estado === "pendiente")) throw new Conflicto("Solo se deshace la carga si ningún pago tiene resultado");
-  return { cambios: { estado: "generada", fechaCarga: "", fechaPago: "" }, hist: [hist("deshacer carga", refN(n), "Vuelve a estado generada", { estado: "cargada", fechaCarga: n.fechaCarga, fechaPago: n.fechaPago || "" }, { estado: "generada", fechaCarga: "", fechaPago: "" })] };
+  return { cambios: { estado: "generada", fechaCarga: "", fechaPago: "", cargadaPor: "", cargadaAt: null }, hist: [hist("deshacer carga", refN(n), "Vuelve a estado generada", { estado: "cargada", fechaCarga: n.fechaCarga, fechaPago: n.fechaPago || "" }, { estado: "generada", fechaCarga: "", fechaPago: "" })] };
 });
 export const resultadoPago = (id, i, estado, motivo) => modificarNomina(id, n => {
   if (n.estado !== "cargada") throw new Conflicto("El resultado se registra con la nómina cargada");

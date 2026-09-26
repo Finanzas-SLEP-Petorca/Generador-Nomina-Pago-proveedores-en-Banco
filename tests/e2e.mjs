@@ -161,6 +161,10 @@ try {
   await esperar(A, () => document.querySelector('#tbBit tr[data-id="1"]').textContent.includes("28/09/2026"));
   assert.match(await A.textContent("#hDetail .due"), /Fecha de pago: 28\/09\/2026/);
   log("fecha de pago: sugiere el día hábil siguiente, rechaza fechas anteriores a la carga y se ve en la bitácora");
+  assert.match(await A.textContent("#hDetail .due"), /Generada el .* por Admin1\. Cargada en BancoEstado el 25\/09\/2026 por Admin1\./);
+  assert.match(await A.textContent('#tbBit tr[data-id="1"]'), /Admin1/);
+  assert.match(await A.textContent("#hDetail .tag"), /resultado desde lun 28\/09 14:00/); // 14:00 del día de pago
+  log("trazabilidad: quién generó y quién cargó; resultado desde las 14:00 del día de pago");
   await A.selectOption('#hDetail [data-pe="1"]', "rechazado");
   await esperar(A, () => document.querySelector('#hDetail [data-pm="1"]'));
   await A.fill('#hDetail [data-pm="1"]', "cuenta inexistente"); await A.press('#hDetail [data-pm="1"]', "Tab");

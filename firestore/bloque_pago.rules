@@ -105,6 +105,12 @@
         && request.resource.data.estado in ['generada', 'cargada', 'anulada']
         // Solo se anula una nómina que aún no se cargó en el banco.
         && (request.resource.data.estado != 'anulada' || resource.data.estado == 'generada')
+        // Quién cargó la nómina: solo quien escribe puede quedar como cargadaPor.
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['cargadaPor'])
+            || request.resource.data.cargadaPor in [pEmail(), ''])
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['cargadaAt'])
+            || request.resource.data.cargadaAt == null
+            || request.resource.data.cargadaAt == request.time)
         && !request.resource.data.diff(resource.data).affectedKeys().hasAny(
              ['num', 'fuente', 'archivo', 'total', 'lineas', 'creadaAt', 'creadaPor']);
       allow delete: if false;
