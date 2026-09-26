@@ -183,6 +183,13 @@ try {
   await A.click('.steps button[data-step="2"]');
   assert.match(await A.textContent("#tbDocs"), /Rechazado en nómina N° 1: cuenta inexistente/);
   log("pago rechazado vuelve a pendientes con su motivo");
+  // Cerrar el detalle: tocando otra vez la misma nómina o con el botón Cerrar.
+  await A.click('.steps button[data-step="4"]');
+  await A.click('#tbBit tr[data-id="1"]'); await esperar(A, () => document.getElementById("hDetail").hidden);
+  await A.click('#tbBit tr[data-id="1"]'); await esperar(A, () => !document.getElementById("hDetail").hidden);
+  await A.click("#nCerrar"); await esperar(A, () => document.getElementById("hDetail").hidden);
+  assert.equal(await A.$('#tbBit tr.cur'), null);
+  log("detalle de la nómina: se cierra al tocarla de nuevo o con Cerrar");
 
   // búsqueda por DC en la bitácora
   await A.click('.steps button[data-step="4"]'); await A.fill("#hSearch", "dc 54");

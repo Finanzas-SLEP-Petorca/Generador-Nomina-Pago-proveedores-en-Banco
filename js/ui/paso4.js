@@ -62,7 +62,16 @@ export function renderBit() {
   list.sort((a, b) => b.n.num - a.n.num);
   $("tbBit").innerHTML = list.length ? list.map(({ n, s }) => `<tr class="clickable${n.id === openNom ? " cur" : ""}" data-id="${esc(n.id)}" tabindex="0"><td class="mono"><b>${n.num}</b></td><td>${esc(n.fuente)}</td><td>${creada(n)}${quien(n.creadaPor)}</td><td>${n.fechaCarga ? fmtISO(n.fechaCarga) : "—"}${n.fechaCarga ? quien(n.cargadaPor) : ""}</td><td>${n.fechaPago ? fmtISO(n.fechaPago) : "—"}</td><td class="num">${n.pagos.length}</td><td class="num">${money(n.total)}</td><td><span class="tag ${s.c}">${esc(s.t)}</span></td></tr>`).join("")
     : `<tr><td colspan="8" class="empty">${nominas.length ? "Ninguna nómina coincide con el filtro." : "Aún no hay nóminas. Genera la primera en el paso 3."}</td></tr>`;
-  $("tbBit").querySelectorAll("tr[data-id]").forEach(tr => { const o = () => { openNom = tr.dataset.id; renderBit(); $("hDetail").scrollIntoView({ behavior: "smooth", block: "start" }) }; tr.onclick = o; tr.onkeydown = e => { if (e.key === "Enter") o() } });
+  // Tocar una nómina abre su detalle; tocar la misma otra vez lo cierra.
+  $("tbBit").querySelectorAll("tr[data-id]").forEach(tr => {
+    const o = () => {
+      const cerrar = openNom === tr.dataset.id;
+      openNom = cerrar ? null : tr.dataset.id; renderBit();
+      if (!cerrar) $("hDetail").scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+    tr.onclick = o; tr.onkeydown = e => { if (e.key === "Enter") o() };
+    tr.title = openNom === tr.dataset.id ? "Toca de nuevo para cerrar el detalle" : "Ver detalle";
+  });
   // trazabilidad de un documento
   const tr = [];
   if (q && (qd || qr.length >= 7 || qdc.startsWith("dc"))) {
@@ -102,7 +111,7 @@ function renderNomDetail() {
   const due = n.fechaCarga ? resultadoDesde(n, st.config.feriados) : null;
   const pend = n.pagos.filter(p => p.estado === "pendiente").length, pag = n.pagos.filter(p => p.estado === "pagado"), rech = n.pagos.filter(p => p.estado === "rechazado");
   box.innerHTML = `
-  <div class="row" style="margin-top:0;justify-content:space-between"><h2 style="margin:0">Nómina N° ${n.num}, ${esc(n.fuente)}</h2><span class="tag ${s.c}">${esc(s.t)}</span></div>
+  <div class="row" style="margin-top:0;justify-content:space-between"><h2 style="margin:0">Nómina N° ${n.num}, ${esc(n.fuente)}</h2><span class="row" style="margin-top:0"><span class="tag ${s.c}">${esc(s.t)}</span><button class="btn small" id="nCerrar" title="Cerrar el detalle">Cerrar ✕</button></span></div>
   <p class="due">Generada el ${creada(n)}${n.creadaPor ? ` por <b title="${esc(n.creadaPor)}">${esc(nombreDe(n.creadaPor))}</b>` : ""}.${n.fechaCarga ? ` Cargada en BancoEstado el ${fmtISO(n.fechaCarga)}${n.cargadaPor ? ` por <b title="${esc(n.cargadaPor)}">${esc(nombreDe(n.cargadaPor))}</b>` : ""}.` : ""} Archivo ${esc(nombreNomina(n))}.txt. ${n.pagos.length} pago${n.pagos.length === 1 ? "" : "s"} por ${money(n.total)}.${n.fechaPago ? ` Fecha de pago: ${fmtISO(n.fechaPago)}.` : ""}${cargada ? ` Pagado ${money(pag.reduce((a, p) => a + p.monto, 0))}, rechazado ${money(rech.reduce((a, p) => a + p.monto, 0))}, pendiente de resultado ${money(n.pagos.filter(p => p.estado === "pendiente").reduce((a, p) => a + p.monto, 0))}.` : ""}</p>
   <div class="grid">
     <label>Fecha de carga en BancoEstado<input type="date" id="nFecha" value="${n.fechaCarga || todayISO()}" ${anul ? "disabled" : ""}></label>
@@ -137,6 +146,7 @@ function renderNomDetail() {
   <h3>Historial de la nómina</h3>
   <ul class="trace" id="nHist">${htmlHistorial(histNom.lista)}</ul>`;
   const q = id => box.querySelector("#" + id);
+  q("nCerrar").onclick = () => { const id = openNom; openNom = null; renderBit(); const tr = $("tbBit").querySelector(`tr[data-id="${CSS.escape(id)}"]`); if (tr) tr.scrollIntoView({ behavior: "smooth", block: "center" }) };
   const datosCarga = () => ({ fechaCarga: q("nFecha").value, fechaPago: q("nFechaPago").value, operacion: S(q("nOper").value), obs: S(q("nObs").value) });
   // Mientras no se haya guardado ni tocado, la fecha de pago sigue al día hábil siguiente a la carga.
   let pagoTocado = !!n.fechaPago;
