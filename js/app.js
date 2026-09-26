@@ -9,6 +9,7 @@ import * as paso3 from "./ui/paso3.js";
 import * as paso4 from "./ui/paso4.js";
 import * as config from "./ui/config.js";
 import * as tema from "./ui/tema.js";
+import * as guia from "./ui/guia.js";
 import { activeFuentes, money, nombreDe } from "./formato.js";
 
 // ---------- pantallas ----------
@@ -24,7 +25,7 @@ function pantalla(modo, texto = "") {
 // ---------- navegación ----------
 function go(n) {
   n = String(n);
-  document.querySelectorAll(".steps button").forEach(b => b.setAttribute("aria-selected", b.dataset.step === n));
+  document.querySelectorAll(".steps button[data-step]").forEach(b => b.setAttribute("aria-selected", b.dataset.step === n));
   document.querySelectorAll(".panel").forEach(p => p.classList.toggle("on", p.id === "p" + n));
   $("btnConfig").setAttribute("aria-pressed", n === "5");
   prefs.step = n; guardarPrefs();
@@ -61,10 +62,10 @@ vista.renderAll = renderAll;
 vista.go = go;
 
 // ---------- arranque ----------
-document.querySelectorAll(".steps button").forEach(b => b.addEventListener("click", () => go(b.dataset.step)));
+document.querySelectorAll(".steps button[data-step]").forEach(b => b.addEventListener("click", () => go(b.dataset.step)));
 // Configuración abre y cierra, volviendo al paso en que se estaba.
 $("btnConfig").onclick = () => { if ($("p5").classList.contains("on")) go(prefs.lastStep || "1"); else { prefs.lastStep = prefs.step; go(5) } };
-[tema, paso1, paso2, paso3, paso4, config].forEach(m => m.init());
+[tema, guia, paso1, paso2, paso3, paso4, config].forEach(m => m.init());
 
 let errorMostrado = null;
 alCambiar(() => {

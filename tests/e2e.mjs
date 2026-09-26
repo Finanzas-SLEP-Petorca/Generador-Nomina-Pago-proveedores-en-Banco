@@ -269,6 +269,18 @@ try {
   // ---------- capturas ----------
   await A.click('.steps button[data-step="4"]'); await A.click('#tbBit tr[data-id="1"]');
   await A.click('[data-tema="light"]');
+  // Guía "Cómo se usa": abre en la sección del paso actual y se cierra.
+  await A.click('.steps button[data-step="3"]');
+  await A.click("#btnGuia");
+  await esperar(A, () => document.getElementById("guia").open);
+  assert.equal(await A.getAttribute('#guiaIndice a[data-sec="p3"]', "aria-current"), "true");
+  assert.equal(await A.$eval('.steps button[data-step="3"]', b => b.getAttribute("aria-selected")), "true"); // el botón no cambia de paso
+  await A.screenshot({ path: AQUI + "guia.png" });
+  await A.click('#guiaIndice a[data-sec="faq"]');
+  await esperar(A, () => document.querySelector('#guiaIndice a[data-sec="faq"]').getAttribute("aria-current") === "true");
+  await A.click("#guiaCerrar");
+  await esperar(A, () => !document.getElementById("guia").open);
+  log("guía Cómo se usa: abre en el paso actual, navega por secciones y se cierra");
   await A.screenshot({ path: AQUI + "escritorio_paso4.png", fullPage: true });
   await A.click('.steps button[data-step="3"]'); await A.screenshot({ path: AQUI + "escritorio_paso3.png", fullPage: true });
   await A.click('[data-tema="dark"]');
@@ -283,6 +295,8 @@ try {
   await A.click('.steps button[data-step="4"]');
   const M = await panel(USUARIO, true); await listo(M);
   await M.screenshot({ path: AQUI + "movil_paso1.png", fullPage: false });
+  await M.click("#btnGuia"); await esperar(M, () => document.getElementById("guia").open);
+  await M.screenshot({ path: AQUI + "movil_guia.png" }); await M.click("#guiaCerrar");
   await M.click('.steps button[data-step="2"]'); await M.screenshot({ path: AQUI + "movil_paso2.png", fullPage: false });
   await M.click('.steps button[data-step="3"]'); await M.screenshot({ path: AQUI + "movil_paso3.png", fullPage: false });
   const ancho = await M.evaluate(() => document.documentElement.scrollWidth);

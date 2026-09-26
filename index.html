@@ -8,14 +8,14 @@
 <link rel="icon" type="image/png" href="assets/logo_slep_petorca.png">
 <!-- Tema elegido (Claro/Oscuro/Sistema) aplicado antes de pintar, para no parpadear -->
 <script>try{var t=localStorage.getItem("pago.tema");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
-<link rel="stylesheet" href="css/panel.css?v=a3faf006b5">
+<link rel="stylesheet" href="css/panel.css?v=fa2549af38">
 <!-- SheetJS y JSZip con versión fijada (copias en vendor/) -->
 <script src="vendor/xlsx-0.18.5.full.min.js" defer></script>
 <script src="vendor/jszip-3.10.1.min.js" defer></script>
 <script type="importmap">
 {
  "imports": {
-  "./js/app.js": "./js/app.js?v=fb054c4046",
+  "./js/app.js": "./js/app.js?v=8610456712",
   "./js/catalogos.js": "./js/catalogos.js?v=a450bddcb7",
   "./js/datos.js": "./js/datos.js?v=f1a50e18ca",
   "./js/excel.js": "./js/excel.js?v=a43844869a",
@@ -25,6 +25,7 @@
   "./js/importar.js": "./js/importar.js?v=539894770a",
   "./js/ui/comun.js": "./js/ui/comun.js?v=d2fdaccfc5",
   "./js/ui/config.js": "./js/ui/config.js?v=fc62f90b44",
+  "./js/ui/guia.js": "./js/ui/guia.js?v=1b1a12555b",
   "./js/ui/paso1.js": "./js/ui/paso1.js?v=8963c78bcc",
   "./js/ui/paso2.js": "./js/ui/paso2.js?v=915197516d",
   "./js/ui/paso3.js": "./js/ui/paso3.js?v=41819f250d",
@@ -83,6 +84,7 @@
   <button role="tab" data-step="2" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg><span class="lbl">Documentos a pagar</span><span class="cnt" id="cntDocs">0</span></button>
   <button role="tab" data-step="3" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 22h18"/><path d="M6 18v-7"/><path d="M10 18v-7"/><path d="M14 18v-7"/><path d="M18 18v-7"/><path d="m12 2 8 5H4Z"/></svg><span class="lbl">Revisar y generar</span><span class="cnt" id="cntErr"></span></button>
   <button role="tab" data-step="4" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg><span class="lbl">Bitácora de nóminas</span><span class="cnt" id="cntBit"></span></button>
+  <button class="ayuda" id="btnGuia" type="button" title="Guía paso a paso del panel"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg><span class="lbl">Cómo se usa</span></button>
 </nav>
 
 <!-- STEP 1 -->
@@ -332,6 +334,16 @@
 </section>
 </div>
 </div>
+<dialog class="guia" id="guia" aria-labelledby="guiaTitulo">
+  <div class="guia-cab">
+    <div><p class="eyebrow">Guía de uso</p><h2 class="titulo" id="guiaTitulo">Cómo se <em>usa</em></h2></div>
+    <button class="btn small" id="guiaCerrar" type="button">Cerrar ✕</button>
+  </div>
+  <div class="guia-in">
+    <nav class="guia-indice" id="guiaIndice" aria-label="Secciones de la guía"></nav>
+    <div class="guia-cuerpo" id="guiaCuerpo"></div>
+  </div>
+</dialog>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 </body>
