@@ -87,6 +87,9 @@ try {
   log("acceso por enlace al correo: el usuario entra; el de fuera de la lista ve 'sin acceso'");
   assert.doesNotMatch(await U.textContent("#usuarioRol"), /Administrador/);
   log("admin y usuario entran; la sonda detecta al administrador");
+  const recursos = await A.evaluate(() => performance.getEntriesByType("resource").map(r => r.name).filter(u => /\/(js|css)\//.test(u)));
+  assert.ok(recursos.length >= 15 && recursos.every(u => /\?v=[0-9a-f]{10}$/.test(u)), "hay módulos sin versión: " + recursos.filter(u => !/\?v=/.test(u)).join(", "));
+  log("los " + recursos.length + " archivos js/css se cargan con su versión (?v=…), sin copias viejas en caché");
 
   // ---------- paso 1: pegar planilla anterior del banco ----------
   await A.click('.steps button[data-step="1"]');

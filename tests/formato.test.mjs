@@ -8,6 +8,8 @@ import vm from "node:vm";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
 
 const raiz = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const F = await import(path.join(raiz, "js/formato.js"));
@@ -195,6 +197,11 @@ ok("nombre de archivo", () => {
   assert.equal(F.fileName("SEP", "SEP", d, fs), "SEP_SEP"); // un prefijo que es solo la fuente se respeta
   assert.equal(F.nombreNomina({ archivo: "20260926_PAGO_PROVEEDORES_SEP_SEP", fuente: "SEP" }), "20260926_PAGO_PROVEEDORES_SEP");
   assert.equal(F.nombreNomina({ archivo: "20260926_PAGO_PROVEEDORES_SEP", fuente: "SEP" }), "20260926_PAGO_PROVEEDORES_SEP");
+});
+
+ok("index.html con las versiones de los archivos al día", () => {
+  const { execFileSync } = require("node:child_process");
+  execFileSync(process.execPath, [path.join(raiz, "tests/versionar.mjs"), "--revisar"], { stdio: "pipe" });
 });
 
 console.log(`\n${pruebas} pruebas OK`);

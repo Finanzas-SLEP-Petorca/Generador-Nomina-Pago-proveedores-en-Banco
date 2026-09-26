@@ -8,11 +8,32 @@
 <link rel="icon" type="image/png" href="assets/logo_slep_petorca.png">
 <!-- Tema elegido (Claro/Oscuro/Sistema) aplicado antes de pintar, para no parpadear -->
 <script>try{var t=localStorage.getItem("pago.tema");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
-<link rel="stylesheet" href="css/panel.css">
+<link rel="stylesheet" href="css/panel.css?v=a3faf006b5">
 <!-- SheetJS y JSZip con versión fijada (copias en vendor/) -->
 <script src="vendor/xlsx-0.18.5.full.min.js" defer></script>
 <script src="vendor/jszip-3.10.1.min.js" defer></script>
-<script type="module" src="js/app.js"></script>
+<script type="importmap">
+{
+ "imports": {
+  "./js/app.js": "./js/app.js?v=fb054c4046",
+  "./js/catalogos.js": "./js/catalogos.js?v=a450bddcb7",
+  "./js/datos.js": "./js/datos.js?v=f1a50e18ca",
+  "./js/excel.js": "./js/excel.js?v=a43844869a",
+  "./js/firebase-config.js": "./js/firebase-config.js?v=ffcd41549c",
+  "./js/firebase.js": "./js/firebase.js?v=6eba6d64a6",
+  "./js/formato.js": "./js/formato.js?v=6e0b5a3678",
+  "./js/importar.js": "./js/importar.js?v=539894770a",
+  "./js/ui/comun.js": "./js/ui/comun.js?v=d2fdaccfc5",
+  "./js/ui/config.js": "./js/ui/config.js?v=fc62f90b44",
+  "./js/ui/paso1.js": "./js/ui/paso1.js?v=8963c78bcc",
+  "./js/ui/paso2.js": "./js/ui/paso2.js?v=915197516d",
+  "./js/ui/paso3.js": "./js/ui/paso3.js?v=41819f250d",
+  "./js/ui/paso4.js": "./js/ui/paso4.js?v=75fd505f00",
+  "./js/ui/tema.js": "./js/ui/tema.js?v=e5740e8ffa"
+ }
+}
+</script>
+<script type="module">import "./js/app.js";</script>
 </head>
 <body>
 <header class="appbar">

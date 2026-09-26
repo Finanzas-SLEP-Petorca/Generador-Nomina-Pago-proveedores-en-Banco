@@ -159,6 +159,16 @@ El formato del archivo, las validaciones y los cálculos son los mismos; `tests/
 - **Solo administradores** pueden cambiar el RUT o eliminar un proveedor.
 - **Descargas directas** del navegador (Blob). "Copiar texto" sigue disponible.
 
+## Publicar cambios sin copias viejas en caché
+
+GitHub Pages deja los archivos 10 minutos en la caché del navegador. Para que un cambio se vea al recargar, `index.html` carga cada módulo y la hoja de estilos con `?v=` y un código del contenido del archivo (un *import map*). Después de modificar cualquier archivo de `js/` o `css/`, y antes del commit, corre:
+
+```
+node tests/versionar.mjs
+```
+
+Si se olvida, `npm run formato` (y el workflow **Pruebas**) falla con el aviso "index.html tiene versiones viejas".
+
 ## Cómo probar
 
 ### Pruebas automáticas (carpeta `tests/`, no se publica)
