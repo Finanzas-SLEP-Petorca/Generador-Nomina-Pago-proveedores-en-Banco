@@ -46,8 +46,14 @@ export function init() {
       const archivo = nombreArchivo(r.fuente);
       const n = await generarNomina(r, archivo);
       abrirNomina(String(n.num)); go(4);
+      // Se descargan los dos archivos de la nómina registrada: el .txt para
+      // cargar en el banco y el Excel BancoEstado, con el mismo nombre.
       descargar(n.archivo + ".txt", toTxt(n.lineas));
-      if (n.num !== num) toast(`Otro usuario generó antes la N° ${num}: esta nómina quedó con el N° ${n.num}. Se descargó ${n.archivo}.txt`);
+      let excel = true;
+      try { descargar(n.archivo + ".xlsx", await bankWorkbook(n.lineas)) }
+      catch (e) { excel = false; toast("Nómina registrada y .txt descargado, pero no se pudo armar el Excel: " + mensajeError(e) + ". Descárgalo desde la bitácora.") }
+      if (excel) toast(`Nómina N° ${n.num} registrada. Se descargaron ${n.archivo}.txt y ${n.archivo}.xlsx`);
+      if (n.num !== num) toast(`Otro usuario generó antes la N° ${num}: esta nómina quedó con el N° ${n.num}. Se descargaron ${n.archivo}.txt${excel ? " y .xlsx" : ""}`);
     });
   };
 }

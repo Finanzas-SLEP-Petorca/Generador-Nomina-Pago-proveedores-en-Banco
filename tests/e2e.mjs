@@ -53,6 +53,11 @@ async function panelEnlace(email) {
 }
 const listo = p => p.waitForFunction(() => !document.getElementById("app").hidden && document.getElementById("cargando").hidden);
 const toastTxt = p => p.textContent("#toast");
+// Espera n descargas seguidas (generar baja el .txt y el Excel BancoEstado).
+async function descargas(p, n, accion) {
+  const lista = []; const listo = new Promise(ok => { const f = async d => { lista.push({ nombre: d.suggestedFilename(), bytes: readFileSync(await d.path()) }); if (lista.length === n) { p.off("download", f); ok() } }; p.on("download", f) });
+  await accion(); await listo; return lista;
+}
 async function descarga(p, accion) { const [d] = await Promise.all([p.waitForEvent("download"), accion()]); return { nombre: d.suggestedFilename(), bytes: readFileSync(await d.path()) } }
 const esperar = (p, fn, arg) => p.waitForFunction(fn, arg, { timeout: 10000 });
 
@@ -103,7 +108,9 @@ try {
   assert.match(await A.textContent("#btnGen"), /N° 1 \(GENERAL\)/);
   const bor = await descarga(A, () => A.click("#btnXlsx"));
   assert.match(bor.nombre, /^\d{8}_PAGO_PROVEEDORES_GENERAL\.xlsx$/);
-  const gen = await descarga(A, () => A.click("#btnGen"));
+  const [gen, genXl] = await descargas(A, 2, () => A.click("#btnGen"));
+  assert.equal(genXl.nombre, gen.nombre.replace(/\.txt$/, ".xlsx"));
+  assert.equal(Buffer.compare(genXl.bytes.subarray(0, 2), Buffer.from("PK")), 0); // es un .xlsx (zip)
   assert.match(gen.nombre, /_PAGO_PROVEEDORES_GENERAL\.txt$/);
   assert.equal(Buffer.compare(gen.bytes, Buffer.from(refTxt, "utf8")), 0, "el .txt difiere de la referencia");
   writeFileSync(AQUI + "salida_nomina1.txt", gen.bytes);
@@ -116,6 +123,8 @@ try {
   writeFileSync(AQUI + "nomina1.xlsx", xl.bytes);
   const refXl = await REF.evaluate(async () => Array.from(await bankWorkbook(build("GENERAL").lines)));
   log("Excel BancoEstado descargado:", xl.nombre, xl.bytes.length, "bytes (referencia", refXl.length + ")");
+  assert.equal(genXl.bytes.length, xl.bytes.length);
+  log("al generar se descargan ambos:", gen.nombre, "y", genXl.nombre, "(" + genXl.bytes.length + " bytes, igual al de la bitácora)");
 
   // ---------- paso 2: documentos con DC y dos usuarios generando a la vez ----------
   await U.click('.steps button[data-step="2"]');
@@ -132,7 +141,7 @@ try {
   await A.click('.steps button[data-step="3"]'); await U.click('.steps button[data-step="3"]');
   await A.click('#tbFuentes tr[data-f="SEP"]'); await U.click('#tbFuentes tr[data-f="PIE"]');
   await esperar(A, () => !document.getElementById("btnGen").disabled); await esperar(U, () => !document.getElementById("btnGen").disabled);
-  const [gA, gU] = await Promise.all([descarga(A, () => A.click("#btnGen")), descarga(U, () => U.click("#btnGen"))]).catch(async e => { console.log("toast A:", await toastTxt(A), "| toast U:", await toastTxt(U)); throw e });
+  const [[gA], [gU]] = await Promise.all([descargas(A, 2, () => A.click("#btnGen")), descargas(U, 2, () => U.click("#btnGen"))]).catch(async e => { console.log("toast A:", await toastTxt(A), "| toast U:", await toastTxt(U)); throw e });
   await esperar(A, () => document.querySelectorAll("#tbBit tr[data-id]").length === 3);
   const nums = await A.$$eval("#tbBit tr[data-id]", trs => trs.map(t => t.dataset.id).sort());
   assert.deepEqual(nums, ["1", "2", "3"]);
