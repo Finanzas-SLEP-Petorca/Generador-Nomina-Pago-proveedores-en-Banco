@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Panel Impresora de Pago Proveedores BancoEstado</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/panel.css">
+<!-- SheetJS y JSZip con versión fijada (copias en vendor/) -->
+<script src="vendor/xlsx-0.18.5.full.min.js" defer></script>
+<script src="vendor/jszip-3.10.1.min.js" defer></script>
+<script type="module" src="js/app.js"></script>
+</head>
+<body>
+<div class="wrap">
+<header class="topbar">
+  <div>
+    <h1>Panel Impresora de Pago Proveedores BancoEstado</h1>
+    <p>Arma el archivo de carga masiva (formato DET-SUBDET de 9 columnas) cruzando tu maestro de proveedores con los documentos a pagar, con una nómina por fuente de financiamiento. Los datos se guardan en Firebase y los comparte el equipo de Finanzas.</p>
+  </div>
+  <div class="user" id="usuario" hidden>
+    <span class="who" id="usuarioEmail"></span>
+    <button class="btn small" id="btnConfig" aria-pressed="false">Configuración</button>
+    <button class="btn small" id="btnSalir">Salir</button>
+  </div>
+</header>
+
+<!-- ACCESO -->
+<section class="card acceso" id="acceso">
+  <h2>Acceso</h2>
+  <p class="sub" id="accesoMsg">Cargando…</p>
+  <div class="row">
+    <button class="btn primary" id="btnEntrar" hidden>Entrar con Google</button>
+    <button class="btn" id="btnSalirAcceso" hidden>Salir y usar otra cuenta</button>
+  </div>
+</section>
+
+<div id="app" hidden>
+<p class="loading" id="cargando">Cargando datos de Firestore…</p>
+
+<nav class="steps" role="tablist">
+  <button role="tab" data-step="1" aria-selected="true"><span class="n">1</span><span class="lbl">Proveedores</span><span class="cnt" id="cntProv">0</span></button>
+  <button role="tab" data-step="2" aria-selected="false"><span class="n">2</span><span class="lbl">Documentos a pagar</span><span class="cnt" id="cntDocs">0</span></button>
+  <button role="tab" data-step="3" aria-selected="false"><span class="n">3</span><span class="lbl">Revisar y generar</span><span class="cnt" id="cntErr"></span></button>
+  <button role="tab" data-step="4" aria-selected="false"><span class="n">4</span><span class="lbl">Bitácora de nóminas</span><span class="cnt" id="cntBit"></span></button>
+</nav>
+
+<!-- STEP 1 -->
+<section class="panel on" id="p1">
+  <div class="card">
+    <h2 id="provFormTitle">Agregar proveedor</h2>
+    <p class="sub">Datos bancarios del beneficiario. Se guardan una vez y se reutilizan en cada nómina.</p>
+    <div class="grid">
+      <label>RUT<input id="fRut" placeholder="12345678-5" autocomplete="off"></label>
+      <label class="wide">Razón social o nombre<input id="fNombre" placeholder="EMPRESA DE SERVICIOS LIMITADA"></label>
+      <label>Email (opcional)<input id="fEmail" type="email" placeholder="aviso@proveedor.cl"></label>
+      <label class="wide">Banco<select id="fBanco"></select></label>
+      <label>Forma de pago<select id="fForma"></select></label>
+      <label>N° de cuenta<input id="fCuenta" placeholder="Sin puntos ni guion" autocomplete="off"></label>
+      <label class="wide">Sector financiero<select id="fSector"></select></label>
+    </div>
+    <div class="row">
+      <button class="btn primary" id="btnSaveProv">Guardar proveedor</button>
+      <button class="btn" id="btnCtaRut" title="BancoEstado, cuenta = RUT sin dígito verificador">Usar Cuenta RUT</button>
+      <button class="btn" id="btnClearProv">Limpiar</button>
+      <button class="btn danger" id="btnDelProv" hidden>Eliminar proveedor</button>
+    </div>
+    <div id="provHist" hidden></div>
+  </div>
+
+  <div class="card">
+    <h2>Carga masiva</h2>
+    <p class="sub">Pega filas copiadas desde Excel o importa un archivo. También acepta una planilla de pago anterior del banco: toma los proveedores y sus documentos.</p>
+    <div class="fmt">RUT ⇥ Nombre ⇥ Email ⇥ Código banco ⇥ Forma pago ⇥ N° cuenta ⇥ Sector</div>
+    <textarea id="pasteProv" placeholder="Pega aquí (con o sin fila de encabezados)" style="margin-top:10px"></textarea>
+    <div class="row">
+      <button class="btn primary" id="btnPasteProv">Agregar filas pegadas</button>
+      <span class="btn file">Importar archivo (.xls, .xlsx, .csv)<input type="file" id="fileProv" accept=".xls,.xlsx,.csv,.txt"></span>
+      <button class="btn" id="btnExportMaestro">Exportar maestro (.csv)</button>
+      <button class="btn" id="btnTemplate">Descargar plantilla</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row" style="margin-top:0;justify-content:space-between">
+      <h2 style="margin:0">Maestro de proveedores</h2>
+      <input id="search" placeholder="Buscar por RUT o nombre" style="max-width:280px">
+    </div>
+    <div class="tablebox"><table>
+      <thead><tr><th>RUT</th><th>Nombre</th><th>Banco</th><th>Forma</th><th>N° cuenta</th><th>Sector</th><th>Email</th></tr></thead>
+      <tbody id="tbProv"></tbody>
+    </table></div>
+    <p class="hint">Toca una fila para editarla.</p>
+  </div>
+</section>
+
+<!-- STEP 2 -->
+<section class="panel" id="p2">
+  <div class="card">
+    <h2>Fuentes de financiamiento</h2>
+    <p class="sub">Cada fuente genera su propia nómina para el banco. Agrega las que uses.</p>
+    <div class="chips" id="chips"></div>
+    <div class="row">
+      <input id="newFuente" placeholder="Nueva fuente, ej. MANTENCION" style="max-width:260px">
+      <button class="btn" id="btnAddFuente">Agregar fuente</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Pegar documentos</h2>
+    <p class="sub">Una fila por documento. Si un proveedor tiene varios documentos de la misma fuente, se agrupan en un solo pago con su detalle.</p>
+    <div class="fmt">RUT ⇥ Fecha doc ⇥ Monto ⇥ N° doc ⇥ Tipo doc ⇥ Fuente (opcional) ⇥ DC (opcional)</div>
+    <p class="hint" style="margin:6px 0 0">¿Prefieres Excel? Descarga la plantilla, complétala y súbela con “Importar archivo”. Trae listas desplegables de tipo de documento y de tus fuentes.</p>
+    <p class="hint" style="margin:4px 0 0">O la fila completa: RUT ⇥ Nombre ⇥ Email ⇥ Banco ⇥ Forma ⇥ Cuenta ⇥ Sector ⇥ Fecha ⇥ Monto ⇥ N° doc ⇥ Tipo ⇥ Fuente ⇥ DC (actualiza también el maestro).</p>
+    <textarea id="pasteDocs" placeholder="111111111	11/09/2026	630000	405	34	SEP	DC 54" style="margin-top:10px"></textarea>
+    <div class="row">
+      <label class="toggle" style="color:var(--muted)">Filas sin fuente van a <select id="defFuente" style="width:auto"></select></label>
+    </div>
+    <div class="row">
+      <button class="btn primary" id="btnPasteDocs">Agregar documentos</button>
+      <span class="btn file">Importar archivo (.xls, .xlsx, .csv)<input type="file" id="fileDocs" accept=".xls,.xlsx,.csv,.txt"></span>
+      <button class="btn" id="btnDocsTpl">Descargar plantilla para completar</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Agregar un documento</h2>
+    <div class="grid" style="margin-top:10px">
+      <label>RUT proveedor<input id="dRut" list="dlRut" autocomplete="off"></label>
+      <label>Fecha documento<input id="dFecha" type="date"></label>
+      <label>Monto<input id="dMonto" inputmode="numeric" placeholder="630000"></label>
+      <label>N° documento<input id="dNdoc" inputmode="numeric"></label>
+      <label>Tipo documento<select id="dTipo"></select></label>
+      <label>Fuente<select id="dFuente"></select></label>
+      <label>DC (opcional)<input id="dDc" placeholder="DC 54" autocomplete="off"></label>
+    </div>
+    <datalist id="dlRut"></datalist>
+    <div class="row"><button class="btn primary" id="btnAddDoc">Agregar documento</button><span class="hint" id="dRutName"></span></div>
+  </div>
+
+  <div class="card">
+    <div class="row" style="margin-top:0;justify-content:space-between">
+      <h2 style="margin:0">Documentos por pagar</h2>
+      <button class="btn danger" id="btnClearDocs">Vaciar todo</button>
+    </div>
+    <p class="sub" style="margin-top:4px">Solo los documentos marcados entran en las nóminas del banco. Los desmarcados quedan guardados para otro día.</p>
+    <div class="bar">
+      <label class="toggle" style="color:var(--muted)">Ver <select id="filtFuente"></select></label>
+      <button class="btn small" id="btnSelAll">Marcar todos</button>
+      <button class="btn small" id="btnSelNone">Desmarcar todos</button>
+      <span class="sp"></span>
+      <label class="toggle" style="color:var(--muted)">Mover marcados a <select id="bulkFuente"></select></label>
+      <button class="btn small" id="btnBulkFuente">Mover</button>
+      <button class="btn small danger" id="btnDelSel">Quitar marcados</button>
+    </div>
+    <p class="hint" id="selInfo" style="margin:8px 0 0"></p>
+    <div class="tablebox"><table>
+      <thead><tr><th class="c"><input type="checkbox" class="chk" id="chkAll" aria-label="Marcar visibles"></th><th>Fuente</th><th>RUT</th><th>Proveedor</th><th>Fecha</th><th style="text-align:right">Monto</th><th>N° doc</th><th>Tipo</th><th>DC</th><th></th></tr></thead>
+      <tbody id="tbDocs"></tbody>
+    </table></div>
+  </div>
+</section>
+
+<!-- STEP 3 -->
+<section class="panel" id="p3">
+  <div class="card">
+    <h2>Nóminas por fuente</h2>
+    <p class="sub">Solo documentos marcados. Toca una fuente para revisarla y descargar su archivo.</p>
+    <div class="tablebox" style="max-height:none"><table class="ftab">
+      <thead><tr><th>Fuente</th><th style="text-align:right">Beneficiarios</th><th style="text-align:right">Documentos</th><th style="text-align:right">Total</th><th>Estado</th></tr></thead>
+      <tbody id="tbFuentes"></tbody>
+      <tfoot><tr><th>Total</th><th style="text-align:right" id="fBenT"></th><th style="text-align:right" id="fDocT"></th><th style="text-align:right" id="fTotT"></th><th></th></tr></tfoot>
+    </table></div>
+    <p class="hint" id="unselInfo"></p>
+  </div>
+
+  <div class="card">
+    <h2 id="curTitle">Nómina</h2>
+    <div class="figures">
+      <div><b id="sBen">0</b><span>beneficiarios</span></div>
+      <div><b id="sDocs">0</b><span>documentos</span></div>
+      <div><b id="sTotal">$0</b><span>total a transferir</span></div>
+    </div>
+    <ul class="issues" id="issues"></ul>
+  </div>
+
+  <div class="card">
+    <h2>Archivo de carga</h2>
+    <div class="grid" style="margin-top:10px">
+      <label class="wide">Prefijo del archivo (se agrega la fuente)<input id="cfgName"></label>
+      <label class="wide">Email por defecto (si el proveedor no tiene)<input id="cfgEmail" type="email"></label>
+    </div>
+    <div class="row">
+      <label class="toggle"><input type="checkbox" id="cfgGroup" checked> Agrupar documentos del mismo proveedor y cuenta en un solo pago</label>
+    </div>
+    <div class="row">
+      <button class="btn primary" id="btnGen">Generar nómina y registrar en bitácora</button>
+      <button class="btn" id="btnXlsx" title="No registra la nómina; sirve para revisión o visto bueno">Excel borrador</button>
+      <button class="btn" id="btnCopy">Copiar texto</button>
+    </div>
+    <p class="hint" id="fileNameInfo"></p>
+    <p class="hint">Al generar, la nómina recibe un número correlativo, se descarga el .txt y sus documentos pasan a la bitácora asociados a ese número.</p>
+    <div class="viewtabs" role="group" aria-label="Vista previa"><button id="vPl" aria-pressed="true">Planilla BancoEstado</button><button id="vTx" aria-pressed="false">Texto .txt</button></div>
+    <div class="be" id="bePrev"></div>
+    <div id="txPrev" hidden>
+      <div class="slip"><pre id="preview"></pre></div>
+      <p class="hint">Cada ⇥ es una tabulación. Líneas tipo 1 = pago al beneficiario; tipo 2 = documentos que lo componen.</p>
+    </div>
+  </div>
+</section>
+
+<!-- STEP 4 -->
+<section class="panel" id="p4">
+  <div class="card">
+    <div class="row" style="margin-top:0;justify-content:space-between">
+      <h2 style="margin:0">Bitácora de nóminas</h2>
+      <span class="row" style="margin-top:0"><button class="btn" id="btnBackup" title="Todo el panel en un archivo, para respaldo">Exportar respaldo (.json)</button><button class="btn" id="btnBitCsv">Exportar bitácora (.csv)</button></span>
+    </div>
+    <p class="sub" style="margin-top:4px">Cada nómina generada queda aquí con sus documentos. Márcala como cargada al subirla a BancoEstado y registra el resultado cuando el banco lo informe (día hábil siguiente, desde las 14:00).</p>
+    <div class="stats" id="bitStats"></div>
+    <div class="bar">
+      <label class="toggle" style="color:var(--muted)">Fuente <select id="hFuente"></select></label>
+      <input id="hSearch" placeholder="Buscar factura (N° doc), RUT, proveedor o DC" style="max-width:320px">
+      <span class="sp"></span>
+      <label class="toggle" style="color:var(--muted)"><input type="checkbox" id="hAnul"> Ver anuladas</label>
+    </div>
+    <ul class="trace" id="hTrace"></ul>
+    <div class="tablebox"><table>
+      <thead><tr><th>N°</th><th>Fuente</th><th>Generada</th><th>Cargada</th><th style="text-align:right">Pagos</th><th style="text-align:right">Total</th><th>Estado</th></tr></thead>
+      <tbody id="tbBit"></tbody>
+    </table></div>
+  </div>
+  <div class="card" id="hDetail" hidden></div>
+</section>
+
+<!-- CONFIGURACIÓN -->
+<section class="panel" id="p5">
+  <div class="card">
+    <h2>Configuración compartida</h2>
+    <p class="sub">Se guarda en Firestore (pago_config/general) y vale para todo el equipo.</p>
+    <div class="grid">
+      <label class="wide">Prefijo del archivo (AAAAMMDD = fecha del día)<input id="cPrefijo" autocomplete="off"></label>
+      <label class="wide">Email por defecto (si el proveedor no tiene)<input id="cEmail" type="email"></label>
+    </div>
+    <p class="hint" id="cPrefijoInfo"></p>
+  </div>
+  <div class="card">
+    <h2>Feriados</h2>
+    <p class="sub">El resultado del banco está disponible desde las 14:00 del día hábil siguiente a la carga. Para calcularlo se saltan sábados, domingos y estas fechas.</p>
+    <div class="chips" id="feriados"></div>
+    <div class="row">
+      <textarea id="cFeriado" placeholder="Una o varias fechas: 18/09/2026, 19/09/2026 o 2026-12-25" style="min-height:44px;max-width:420px"></textarea>
+      <button class="btn" id="btnAddFeriado">Agregar feriados</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Respaldo</h2>
+    <p class="sub">Descarga todo el panel en un archivo JSON (proveedores, documentos, nóminas y configuración). Contiene datos bancarios: guárdalo fuera del repositorio.</p>
+    <div class="row"><button class="btn" id="btnBackup2">Exportar respaldo (.json)</button></div>
+  </div>
+  <div class="card" id="cardMigracion" hidden>
+    <h2>Importar respaldo JSON (administradores)</h2>
+    <p class="sub">Migra los datos del panel anterior: el respaldo que exporta su paso 4, o un objeto con las claves bepago.maestro.v1, bepago.docs.v1, bepago.nominas.v1 y bepago.config.v1. Antes de escribir se muestra un resumen. Las nóminas solo se importan con la bitácora de Firestore vacía. El maestro también se puede cargar con el CSV que exporta el paso 1 (Importar archivo).</p>
+    <div class="row"><span class="btn file">Elegir respaldo (.json)<input type="file" id="fileRespaldo" accept=".json,application/json"></span></div>
+    <div id="resumenRespaldo"></div>
+  </div>
+  <div class="card">
+    <h2>Acceso</h2>
+    <p class="sub" id="sesionInfo"></p>
+    <p class="hint">Quién entra lo definen las reglas de Firestore (funciones pAllowed y pAdmin). Para sumar o quitar personas, ver el README del repositorio.</p>
+  </div>
+</section>
+</div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+</body>
+</html>
