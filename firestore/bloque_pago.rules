@@ -1,0 +1,124 @@
+    // =====================================================================
+    // BLOQUE NUEVO — Panel Impresora de Pago Proveedores BancoEstado
+    // Colecciones con prefijo pago_. Contienen datos bancarios de proveedores,
+    // por eso NO usa isAllowed(): acceso solo para Finanzas y Subdirección SAF.
+    //
+    // IMPORTANTE: este repositorio es público, así que las listas de correos
+    // de pAdmin() y pAllowed() traen marcadores (@example.com). Antes de pegar
+    // el bloque en la consola de Firebase, reemplázalos por los correos reales.
+    // Con los marcadores nadie tiene acceso (falla cerrado).
+    // =====================================================================
+
+    function pEmail() {
+      return (request.auth != null
+              && request.auth.token.get('email_verified', false) == true)
+             ? request.auth.token.email : '';
+    }
+
+    function pAdmin() {
+      return pEmail() in [
+        "admin1@example.com",   // REEMPLAZAR por el correo real
+        "admin2@example.com"    // REEMPLAZAR por el correo real
+      ];
+    }
+
+    function pAllowed() {
+      return pAdmin() || pEmail() in [
+        "usuario1@example.com",   // REEMPLAZAR: una línea por persona
+        "usuario2@example.com"
+      ];
+    }
+
+    // Toda escritura va firmada por el usuario y con hora del servidor.
+    function pFirmado() {
+      return request.resource.data.updatedBy == pEmail()
+          && request.resource.data.updatedAt == request.time;
+    }
+
+    function pContadorPath() {
+      return /databases/$(database)/documents/pago_config/contador;
+    }
+
+    // --- Configuración general: fuentes, email por defecto, feriados ---
+    match /pago_config/general {
+      allow read: if pAllowed();
+      allow create, update: if pAllowed() && pFirmado()
+        && request.resource.data.keys().hasOnly(
+             ['fuentes', 'emailDefecto', 'feriados', 'prefijoArchivo', 'updatedAt', 'updatedBy'])
+        && request.resource.data.fuentes is list;
+      allow delete: if false;
+    }
+
+    // --- Correlativo de nóminas: solo avanza de uno en uno ---
+    match /pago_config/contador {
+      allow read: if pAllowed();
+      allow create: if pAllowed() && pFirmado()
+        && request.resource.data.keys().hasOnly(['nextNum', 'updatedAt', 'updatedBy'])
+        && request.resource.data.nextNum is int
+        && request.resource.data.nextNum >= 1;
+      allow update: if pAllowed() && pFirmado()
+        && request.resource.data.keys().hasOnly(['nextNum', 'updatedAt', 'updatedBy'])
+        && request.resource.data.nextNum == resource.data.nextNum + 1;
+      allow delete: if false;
+    }
+
+    // --- Maestro de proveedores (id del documento = RUT normalizado) ---
+    match /pago_proveedores/{rut} {
+      allow read: if pAllowed();
+      allow create, update: if pAllowed() && pFirmado()
+        && request.resource.data.rut == rut
+        && request.resource.data.keys().hasOnly(
+             ['rut', 'nombre', 'email', 'banco', 'forma', 'cuenta', 'sector',
+              'createdAt', 'createdBy', 'updatedAt', 'updatedBy'])
+        && request.resource.data.nombre is string
+        && request.resource.data.cuenta is string;
+      allow delete: if pAdmin();
+    }
+
+    // --- Documentos pendientes de pago ---
+    match /pago_documentos/{docId} {
+      allow read: if pAllowed();
+      allow create, update: if pAllowed() && pFirmado()
+        && request.resource.data.keys().hasOnly(
+             ['rut', 'fecha', 'monto', 'ndoc', 'tipo', 'fuente', 'sel', 'dc', 'hist',
+              'createdAt', 'createdBy', 'updatedAt', 'updatedBy'])
+        && request.resource.data.monto is int
+        && request.resource.data.monto > 0
+        && request.resource.data.fuente is string;
+      // Se borran al pasar a una nómina o al quitarlos de la lista.
+      allow delete: if pAllowed();
+    }
+
+    // --- Bitácora de nóminas (id del documento = número correlativo) ---
+    match /pago_nominas/{nominaId} {
+      allow read: if pAllowed();
+      // Solo nace en estado 'generada', con el número que reserva el contador
+      // en la misma transacción. Un id repetido no puede crearse dos veces.
+      allow create: if pAllowed() && pFirmado()
+        && request.resource.data.estado == 'generada'
+        && request.resource.data.num is int
+        && nominaId == string(request.resource.data.num)
+        && getAfter(pContadorPath()).data.nextNum == request.resource.data.num + 1;
+      // No se cambian los datos de origen; una nómina anulada queda cerrada.
+      allow update: if pAllowed() && pFirmado()
+        && resource.data.estado != 'anulada'
+        && request.resource.data.estado in ['generada', 'cargada', 'anulada']
+        // Solo se anula una nómina que aún no se cargó en el banco.
+        && (request.resource.data.estado != 'anulada' || resource.data.estado == 'generada')
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(
+             ['num', 'fuente', 'archivo', 'total', 'lineas', 'creadaAt', 'creadaPor']);
+      allow delete: if false;
+    }
+
+    // --- Historial de acciones: solo se agrega ---
+    match /pago_historial/{entradaId} {
+      allow read: if pAllowed();
+      allow create: if pAllowed()
+        && request.resource.data.keys().hasOnly(
+             ['accion', 'ref', 'detalle', 'antes', 'despues', 'autor', 'createdAt'])
+        && request.resource.data.accion is string
+        && request.resource.data.autor == pEmail()
+        && request.resource.data.createdAt == request.time;
+      allow update, delete: if false;
+    }
+

@@ -1,0 +1,26 @@
+# Nunca se suben datos reales: nóminas, planillas con datos ni respaldos.
+*.txt
+datos/
+respaldos/
+*.json.bak
+respaldo_*.json
+bitacora_*.csv
+maestro_*.csv
+
+# Planillas: solo las plantillas vacías de assets/ van al repositorio.
+*.xls
+*.xlsx
+*.xlsm
+*.csv
+!assets/*.xlsx
+
+# Copia local de las reglas con los correos reales.
+firestore/*.local.rules
+
+# Herramientas de prueba
+node_modules/
+tests/node_modules/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+.DS_Store
