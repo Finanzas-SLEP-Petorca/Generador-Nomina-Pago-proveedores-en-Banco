@@ -241,7 +241,7 @@ function transaccionGenerar(r, archivo, alReservar) {
     const nomina = {
       num, fuente: r.fuente, archivo, estado: "generada",
       creadaAt: serverTimestamp(), creadaPor: st.email,
-      fechaCarga: "", operacion: "", obs: "", total: r.total,
+      fechaCarga: "", fechaPago: "", operacion: "", obs: "", total: r.total,
       lineas: r.lines.map(l => ({ tipo: l.tipo, f: [...l.f] })),
       pagos: r.groups.map(g => ({ rut: g.p.rut, nombre: g.p.nombre, banco: g.p.banco, cuenta: g.p.cuenta, monto: g.sum, estado: "pendiente", motivo: "", reint: "", docs: g.docs.map(d => ({ docId: d.id, fecha: d.fecha, monto: d.monto, ndoc: d.ndoc, tipo: d.tipo, dc: d.dc || "" })) })),
       ...f()
@@ -275,16 +275,19 @@ const refN = n => "nomina:" + n.num;
 
 export const cargarNomina = (id, datosCarga) => modificarNomina(id, n => {
   if (n.estado !== "generada") throw new Conflicto(`La nómina N° ${n.num} ya no está en estado generada`);
-  return { cambios: { estado: "cargada", ...datosCarga }, hist: [hist("cargar nómina", refN(n), `Cargada en BancoEstado el ${fmtISO(datosCarga.fechaCarga)}${datosCarga.operacion ? ", operación " + datosCarga.operacion : ""}${datosCarga.obs ? ". " + datosCarga.obs : ""}`, { estado: "generada" }, { estado: "cargada", ...datosCarga })] };
+  return { cambios: { estado: "cargada", ...datosCarga }, hist: [hist("cargar nómina", refN(n), `Cargada en BancoEstado el ${fmtISO(datosCarga.fechaCarga)}, fecha de pago ${fmtISO(datosCarga.fechaPago)}${datosCarga.operacion ? ", operación " + datosCarga.operacion : ""}${datosCarga.obs ? ". " + datosCarga.obs : ""}`, { estado: "generada" }, { estado: "cargada", ...datosCarga })] };
 });
 export const guardarCarga = (id, datosCarga) => modificarNomina(id, n => {
   if (n.estado !== "cargada") throw new Conflicto(`La nómina N° ${n.num} no está cargada`);
-  const antes = { fechaCarga: n.fechaCarga, operacion: n.operacion, obs: n.obs };
-  return { cambios: datosCarga, hist: [hist("editar datos de carga", refN(n), "Fecha de carga, operación u observación", antes, datosCarga)] };
+  const antes = { fechaCarga: n.fechaCarga, fechaPago: n.fechaPago || "", operacion: n.operacion, obs: n.obs };
+  const cambiados = Object.keys(antes).filter(k => S(antes[k]) !== S(datosCarga[k]));
+  if (!cambiados.length) return { cambios: {} };
+  const nombres = { fechaCarga: "fecha de carga", fechaPago: "fecha de pago", operacion: "N° de operación", obs: "observación" };
+  return { cambios: datosCarga, hist: [hist("editar datos de carga", refN(n), "Cambia " + cambiados.map(k => nombres[k]).join(", ") + (cambiados.includes("fechaPago") ? `: pago el ${fmtISO(datosCarga.fechaPago)}` : ""), antes, datosCarga)] };
 });
 export const deshacerCarga = id => modificarNomina(id, n => {
   if (n.estado !== "cargada" || !n.pagos.every(p => p.estado === "pendiente")) throw new Conflicto("Solo se deshace la carga si ningún pago tiene resultado");
-  return { cambios: { estado: "generada", fechaCarga: "" }, hist: [hist("deshacer carga", refN(n), "Vuelve a estado generada", { estado: "cargada", fechaCarga: n.fechaCarga }, { estado: "generada", fechaCarga: "" })] };
+  return { cambios: { estado: "generada", fechaCarga: "", fechaPago: "" }, hist: [hist("deshacer carga", refN(n), "Vuelve a estado generada", { estado: "cargada", fechaCarga: n.fechaCarga, fechaPago: n.fechaPago || "" }, { estado: "generada", fechaCarga: "", fechaPago: "" })] };
 });
 export const resultadoPago = (id, i, estado, motivo) => modificarNomina(id, n => {
   if (n.estado !== "cargada") throw new Conflicto("El resultado se registra con la nómina cargada");
@@ -358,7 +361,7 @@ export function analizarRespaldo(r) {
   const nominas = r.nominas.map(n => ({
     num: n.num, fuente: S(n.fuente), archivo: S(n.archivo), estado: n.estado,
     creada: n.creadaAt || n.creada || "", creadaPor: S(n.creadaPor),
-    fechaCarga: S(n.fechaCarga), operacion: S(n.operacion), obs: S(n.obs), total: n.total,
+    fechaCarga: S(n.fechaCarga), fechaPago: S(n.fechaPago), operacion: S(n.operacion), obs: S(n.obs), total: n.total,
     lineas: (n.lineas || n.lines || []).map(l => ({ tipo: l.tipo || l.type, f: l.f.map(S) })),
     pagos: (n.pagos || []).map(p => ({ rut: S(p.rut), nombre: S(p.nombre), banco: S(p.banco), cuenta: S(p.cuenta), monto: p.monto, estado: p.estado || "pendiente", motivo: S(p.motivo), reint: S(p.reint), docs: (p.docs || []).map(d => ({ docId: S(d.docId), fecha: S(d.fecha), monto: d.monto, ndoc: S(d.ndoc), tipo: S(d.tipo), dc: normDc(d.dc) })) }))
   })).sort((a, b) => a.num - b.num);

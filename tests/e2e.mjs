@@ -150,8 +150,17 @@ try {
   // ---------- paso 4: carga, resultado, rechazo y reintegro ----------
   await A.click('.steps button[data-step="4"]');
   await A.click('#tbBit tr[data-id="1"]');
+  // Fecha de pago: por defecto el día hábil siguiente a la carga; no puede ser anterior a la carga.
+  await A.fill("#nFecha", "2026-09-25"); await A.dispatchEvent("#nFecha", "change");  // viernes
+  assert.equal(await A.inputValue("#nFechaPago"), "2026-09-28");                        // lunes
+  await A.fill("#nFechaPago", "2026-09-24"); await A.click("#nCargar");
+  await esperar(A, () => document.getElementById("toast").textContent.includes("no puede ser anterior"));
+  await A.fill("#nFechaPago", "2026-09-28");
   await A.click("#nCargar");
   await esperar(A, () => document.querySelector("#hDetail .tag")?.textContent.includes("Cargada"));
+  await esperar(A, () => document.querySelector('#tbBit tr[data-id="1"]').textContent.includes("28/09/2026"));
+  assert.match(await A.textContent("#hDetail .due"), /Fecha de pago: 28\/09\/2026/);
+  log("fecha de pago: sugiere el día hábil siguiente, rechaza fechas anteriores a la carga y se ve en la bitácora");
   await A.selectOption('#hDetail [data-pe="1"]', "rechazado");
   await esperar(A, () => document.querySelector('#hDetail [data-pm="1"]'));
   await A.fill('#hDetail [data-pm="1"]', "cuenta inexistente"); await A.press('#hDetail [data-pm="1"]', "Tab");
@@ -162,6 +171,7 @@ try {
   await esperar(A, () => /Procesada/.test(document.querySelector("#hDetail .tag")?.textContent));
   await esperar(A, () => document.querySelectorAll("#nHist li").length >= 5);
   const histN1 = await A.$$eval("#nHist li b", b => b.map(x => x.textContent));
+  assert.match(await A.textContent("#nHist"), /fecha de pago 28\/09\/2026/);
   log("historial de la nómina 1:", histN1.join(" → "));
   await A.click('.steps button[data-step="2"]');
   assert.match(await A.textContent("#tbDocs"), /Rechazado en nómina N° 1: cuenta inexistente/);

@@ -57,6 +57,8 @@ export function resultDue(ymd, feriados = []) {
   do { t.setDate(t.getDate() + 1) } while (t.getDay() === 0 || t.getDay() === 6 || fer.has(todayISO(t)));
   return t;
 }
+// Día hábil siguiente (ISO), saltando fines de semana y feriados.
+export function diaHabilSiguiente(ymd, feriados = []) { return todayISO(resultDue(ymd, feriados)) }
 export function fmtDue(t) { return DIAS[t.getDay()] + " " + two(t.getDate()) + "/" + two(t.getMonth() + 1) + " 14:00" }
 
 // ---------- validación ----------
