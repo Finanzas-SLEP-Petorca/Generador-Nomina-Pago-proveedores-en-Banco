@@ -24,3 +24,6 @@ firebase-debug.log
 firestore-debug.log
 ui-debug.log
 .DS_Store
+
+# Reglas generadas para el emulador
+tests/.generado/

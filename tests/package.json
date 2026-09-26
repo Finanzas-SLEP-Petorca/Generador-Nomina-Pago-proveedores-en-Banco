@@ -1,0 +1,21 @@
+{
+  "name": "pruebas-panel-pago",
+  "private": true,
+  "type": "module",
+  "description": "Pruebas locales (no se publican): formato vs referencia, reglas de Firestore con el emulador y prueba de punta a punta en Chromium.",
+  "scripts": {
+    "formato": "node formato.test.mjs",
+    "reglas": "node preparar-reglas.mjs && firebase emulators:exec --only firestore --project demo-pago \"node --test reglas.test.mjs\"",
+    "test": "npm run formato && npm run reglas",
+    "emuladores": "node preparar-reglas.mjs && firebase emulators:start --only firestore,auth --project demo-pago",
+    "e2e": "node preparar-reglas.mjs && node preparar-e2e.mjs && firebase emulators:exec --only firestore,auth --project demo-pago \"node e2e.mjs\""
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "5.0.2",
+    "firebase": "12.3.0",
+    "firebase-tools": "15.31.0",
+    "esbuild": "0.25.10",
+    "firebase10": "npm:firebase@10.14.1",
+    "playwright": "1.56.1"
+  }
+}
