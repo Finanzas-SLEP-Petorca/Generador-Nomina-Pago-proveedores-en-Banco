@@ -1,0 +1,55 @@
+// Excel idéntico a la planilla oficial BancoEstado y plantilla de documentos.
+// Se parte de los .xlsx de assets/ y solo se escriben las filas de datos;
+// el resto del archivo (logo, colores, comentarios, hojas de apoyo) no cambia.
+// Usa JSZip (global, vendor/jszip-3.10.1.min.js).
+
+const MIME_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const cache = {};
+async function plantilla(ruta) {
+  if (typeof JSZip === "undefined") throw new Error("no se cargó el generador de Excel");
+  if (!cache[ruta]) cache[ruta] = fetch(ruta).then(r => { if (!r.ok) throw new Error("no se pudo leer " + ruta); return r.arrayBuffer() });
+  try { return await JSZip.loadAsync(await cache[ruta]) }
+  catch (e) { delete cache[ruta]; throw e }
+}
+const x = v => String(v).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+// lineas: [{ tipo: 1|2, f: [...] }] tal como se guardan en pago_nominas.
+export async function bankWorkbook(lineas) {
+  const zip = await plantilla("assets/plantilla_bancoestado.xlsx");
+  const path = "xl/worksheets/sheet1.xml";
+  let xml = await zip.file(path).async("string");
+  const str = (ref, s, v) => v === "" ? `<c r="${ref}" s="${s}"/>` : `<c r="${ref}" s="${s}" t="inlineStr"><is><t>${x(v)}</t></is></c>`;
+  const num = (ref, s, v) => `<c r="${ref}" s="${s}"><v>${v}</v></c>`;
+  let r = 4, rows = "";
+  lineas.forEach(l => {
+    r++; const f = l.f;
+    if (l.tipo === 1) {
+      rows += `<row r="${r}">` + str("A" + r, 20, "1") + str("B" + r, 21, f[1]) + str("C" + r, 22, f[2]) + str("D" + r, 23, f[3]) + str("E" + r, 24, f[4]) + str("F" + r, 24, f[5]) + str("G" + r, 21, f[6]) + str("H" + r, 18, f[7]) + num("I" + r, 25, f[8]) + `</row>`;
+    } else {
+      rows += `<row r="${r}">` + str("A" + r, 20, "2") + str("B" + r, 20, f[1]) + num("C" + r, 25, f[2]) + str("D" + r, 20, f[3]) + str("E" + r, 20, f[4]) + `<c r="H${r}" s="18"/></row>`;
+    }
+  });
+  xml = xml.replace("</sheetData>", rows + "</sheetData>").replace(/<dimension ref="[^"]*"\/>/, `<dimension ref="A1:I${Math.max(r, 4)}"/>`);
+  zip.file(path, xml);
+  return zip.generateAsync({ type: "uint8array", compression: "DEFLATE", mimeType: MIME_XLSX });
+}
+
+// Plantilla de documentos con la hoja Fuentes rellenada (lista desplegable).
+export async function docsTemplate(fuentes) {
+  const zip = await plantilla("assets/plantilla_documentos.xlsx");
+  const p = "xl/worksheets/sheet3.xml"; let xml = await zip.file(p).async("string");
+  const fs = fuentes.slice(0, 40);
+  const rows = fs.map((f, i) => `<row r="${i + 2}"><c r="A${i + 2}" t="inlineStr"><is><t>${x(f)}</t></is></c></row>`).join("");
+  xml = xml.replace("</sheetData>", rows + "</sheetData>").replace(/<dimension ref="[^"]*"\/>/, `<dimension ref="A1:A${fs.length + 1}"/>`);
+  zip.file(p, xml);
+  return zip.generateAsync({ type: "uint8array", compression: "DEFLATE", mimeType: MIME_XLSX });
+}
+
+// Plantilla simple del paso 1 (proveedores y documentos), igual que la referencia.
+export function plantillaSimple() {
+  if (typeof XLSX === "undefined") throw new Error("el generador de Excel no cargó");
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([["RUT", "NOMBRE", "EMAIL", "BANCO", "FORMA DE PAGO", "N CUENTA", "SECTOR"]]), "Proveedores");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([["RUT", "FECHA DOC", "MONTO", "N DOC", "TIPO DOC", "FUENTE", "DC"]]), "Documentos");
+  return new Uint8Array(XLSX.write(wb, { bookType: "xlsx", type: "array" }));
+}

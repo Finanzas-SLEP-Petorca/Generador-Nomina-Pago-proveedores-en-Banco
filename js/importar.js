@@ -1,0 +1,142 @@
+// Ingestión de proveedores y documentos: pegar desde Excel, importar
+// .xls/.xlsx/.csv/.txt y reconocer una planilla de pago anterior del banco.
+// Misma lógica que el panel de referencia, más la columna DC opcional.
+
+import { S, normRut, rutOk, parseFecha, cleanName, normFuente, pad, normCuenta, parseMonto, normDc } from "./formato.js";
+
+const RX = {
+  fuente: /fuente|financiamiento|subvenci|programa|centro de costo/, rut: /^rut|rut (del )?(proveedor|beneficiario)/, nombre: /raz|nombre|beneficiario|proveedor/, email: /mail|correo/,
+  forma: /forma|medio/, cuenta: /cuenta/, sector: /sector/, banco: /banco/, fecha: /fecha/, monto: /monto|importe|total/, ndoc: /(n.?|numero|número|nro|folio).*doc|^folio|^n.? ?doc/, tipo: /tipo/,
+  dc: /^dc\b|^n.? ?dc\b/
+};
+const ORDER = ["fuente", "rut", "email", "forma", "cuenta", "sector", "fecha", "ndoc", "tipo", "monto", "banco", "nombre", "dc"];
+
+export function headerMap(row) {
+  const map = {};
+  row.forEach((c, i) => {
+    const h = S(c).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""); if (!h) return;
+    for (const k of ORDER) { if (!(k in map) && RX[k].test(h)) { map[k] = i; break } }
+  });
+  return map;
+}
+export function isBankSheet(rows) {
+  return rows.some(r => S(r[0]) === "1" && rutOk(normRut(r[1])) && r.length >= 9) && rows.some(r => S(r[0]) === "2" && parseFecha(r[1]));
+}
+
+// Filas (listas de celdas) → { provs, newDocs } sin normalizar.
+export function ingest(rows, hint) {
+  rows = rows.filter(r => r && r.some(c => S(c) !== ""));
+  const provs = [], newDocs = [];
+  if (!rows.length) return { provs, newDocs };
+  if (isBankSheet(rows)) {
+    let cur = null;
+    rows.forEach(r => {
+      const t = S(r[0]);
+      if (t === "1" && rutOk(normRut(r[1]))) { cur = normRut(r[1]); provs.push({ rut: r[1], nombre: r[2], email: r[3], banco: r[4], forma: r[5], cuenta: r[6], sector: r[7] }) }
+      else if (t === "2" && cur && parseFecha(r[1])) newDocs.push({ rut: cur, fecha: r[1], monto: r[2], ndoc: r[3], tipo: r[4], fuente: hint || "" });
+    });
+    return { provs, newDocs };
+  }
+  let map = null, start = 0;
+  for (let i = 0; i < Math.min(rows.length, 10); i++) {
+    const m = headerMap(rows[i]);
+    if ("rut" in m && Object.keys(m).length >= 3 && !rutOk(normRut(rows[i][m.rut]))) { map = m; start = i + 1; break }
+  }
+  if (!map) {
+    const n = Math.max(...rows.map(r => { let k = r.length; while (k > 0 && S(r[k - 1]) === "") k--; return k }));
+    const looksDoc = rows.filter(r => parseFecha(r[1])).length >= rows.length / 2;
+    // Formato completo (11 o 12 columnas; la 13ª es DC) o de documentos (5 o 6; la 7ª es DC).
+    if (n >= 11) map = { rut: 0, nombre: 1, email: 2, banco: 3, forma: 4, cuenta: 5, sector: 6, fecha: 7, monto: 8, ndoc: 9, tipo: 10, fuente: 11, dc: 12 };
+    else if (looksDoc) map = { rut: 0, fecha: 1, monto: 2, ndoc: 3, tipo: 4, fuente: 5, dc: 6 };
+    else map = { rut: 0, nombre: 1, email: 2, banco: 3, forma: 4, cuenta: 5, sector: 6 };
+  }
+  const hasProv = ("banco" in map) || ("cuenta" in map);
+  const hasDoc = ("monto" in map) && ("ndoc" in map || "fecha" in map);
+  rows.slice(start).forEach(r => {
+    const g = k => k in map ? r[map[k]] : "";
+    if (!S(g("rut"))) return;
+    if (hasProv) provs.push({ rut: g("rut"), nombre: g("nombre"), email: g("email"), banco: g("banco"), forma: g("forma"), cuenta: g("cuenta"), sector: g("sector") });
+    if (hasDoc) newDocs.push({ rut: g("rut"), fecha: g("fecha"), monto: g("monto"), ndoc: g("ndoc"), tipo: g("tipo"), fuente: g("fuente") || hint || "", dc: g("dc") });
+  });
+  return { provs, newDocs };
+}
+
+// Normaliza lo ingerido contra el maestro actual, sin escribir nada.
+// Devuelve lo que hay que guardar y los documentos rechazados: Firestore
+// exige monto entero mayor que cero, así que esos no se pueden guardar.
+export function prepararIngesta({ provs, newDocs }, { maestro, fuentes, defFuente }) {
+  const cambios = new Map(); // rut → { antes, despues }
+  provs.forEach(p => {
+    const rut = normRut(p.rut); if (!rut) return;
+    const rec = { rut, nombre: cleanName(p.nombre), email: S(p.email), banco: pad(p.banco, 3), forma: pad(p.forma, 2) || "01", cuenta: normCuenta(p.cuenta), sector: pad(p.sector, 2) };
+    const prev = cambios.has(rut) ? cambios.get(rut).despues : maestro[rut];
+    let despues;
+    if (prev) { despues = { ...prev }; for (const k in rec) if (rec[k]) despues[k] = rec[k] } else despues = rec;
+    const antes = cambios.has(rut) ? cambios.get(rut).antes : (maestro[rut] || null);
+    cambios.set(rut, { antes, despues });
+  });
+  let nNew = 0, nUpd = 0;
+  for (const c of cambios.values()) c.antes ? nUpd++ : nNew++;
+  const docs = [], rechazados = [], nuevasFuentes = [], byF = {};
+  const todas = [...fuentes];
+  newDocs.forEach(d => {
+    const f = normFuente(d.fuente) || defFuente;
+    const doc = { rut: normRut(d.rut), fecha: parseFecha(d.fecha), monto: parseMonto(d.monto), ndoc: S(typeof d.ndoc === "number" ? Math.round(d.ndoc) : d.ndoc), tipo: pad(d.tipo, 2), fuente: f, sel: true };
+    const dc = normDc(d.dc); if (dc) doc.dc = dc;
+    if (!(Number.isInteger(doc.monto) && doc.monto > 0)) { rechazados.push({ ...doc, montoOriginal: S(d.monto) }); return }
+    if (f && !todas.includes(f)) { todas.push(f); nuevasFuentes.push(f) }
+    byF[f] = (byF[f] || 0) + 1;
+    docs.push(doc);
+  });
+  return { provs: [...cambios.values()], nNew, nUpd, docs, rechazados, nuevasFuentes, fuentes: todas, byF };
+}
+
+export function parsePaste(text) { return text.replace(/\r/g, "").split("\n").map(l => l.split(/\t|;/)) }
+
+// Texto delimitado (CSV del maestro, .txt del banco). Se lee como texto y no
+// con SheetJS para no perder ceros a la izquierda ni dígitos de cuentas largas.
+export function parseDelimitado(text) {
+  text = text.replace(/^﻿/, "");
+  const first = (text.split(/\r?\n/).find(l => l.trim()) || "");
+  const cuenta = c => first.split(c).length - 1;
+  const sep = cuenta("\t") ? "\t" : cuenta(";") >= cuenta(",") ? ";" : ",";
+  const rows = []; let row = [], cell = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) {
+      if (ch === '"') { if (text[i + 1] === '"') { cell += '"'; i++ } else q = false }
+      else cell += ch;
+    } else if (ch === '"' && cell === "") q = true;
+    else if (ch === sep) { row.push(cell); cell = "" }
+    else if (ch === "\n" || ch === "\r") { if (ch === "\r" && text[i + 1] === "\n") i++; row.push(cell); rows.push(row); row = []; cell = "" }
+    else cell += ch;
+  }
+  if (cell !== "" || row.length) { row.push(cell); rows.push(row) }
+  return rows;
+}
+function decodificar(buf) {
+  try { return new TextDecoder("utf-8", { fatal: true }).decode(buf) }
+  catch (e) { return new TextDecoder("windows-1252").decode(buf) } // CSV guardado por Excel en Windows
+}
+
+export function fuenteFromName(name, fuentes) {
+  const up = cleanName(name.replace(/[_\-.]/g, " ")); const words = up.split(" ");
+  return fuentes.filter(f => f.split(" ").every(w => words.includes(w))).sort((a, b) => b.length - a.length)[0] || "";
+}
+
+// Lee un archivo y devuelve { provs, newDocs }. Usa SheetJS (global XLSX).
+export async function readFile(file, fuentes) {
+  const hint = fuenteFromName(file.name, fuentes);
+  const buf = await file.arrayBuffer();
+  if (/\.(csv|txt)$/i.test(file.name)) return ingest(parseDelimitado(decodificar(buf)), hint);
+  if (typeof XLSX === "undefined") throw new Error("no se pudo cargar el lector de Excel. Pega las filas en su lugar");
+  const wb = XLSX.read(buf, { type: "array", cellDates: false });
+  const name = wb.SheetNames.find(n => /detalle/i.test(n)) || wb.SheetNames[0];
+  let rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: true, defval: "" });
+  if (!isBankSheet(rows) && wb.SheetNames.length > 1 && !/detalle/i.test(name)) {
+    const all = { provs: [], newDocs: [] };
+    wb.SheetNames.filter(n => !/instruc|lista|fuente|ayuda/i.test(n)).forEach(n => { const r = ingest(XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: "" }), hint); all.provs.push(...r.provs); all.newDocs.push(...r.newDocs) });
+    return all;
+  }
+  return ingest(rows, hint);
+}
