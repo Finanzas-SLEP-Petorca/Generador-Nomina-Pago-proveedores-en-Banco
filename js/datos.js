@@ -1,0 +1,407 @@
+// Lectura y escritura en Firestore. Colecciones con prefijo pago_.
+// Mantiene el estado compartido (st) al día con onSnapshot y concentra
+// todas las escrituras, cada una firmada y con su entrada de historial.
+
+import { db, fs, firma } from "./firebase.js";
+import { FUENTES_DEFECTO, EMAIL_DEFECTO, PREFIJO_DEFECTO } from "./catalogos.js";
+import { S, checkProv, money, fmtRut, fmtISO, todayISO, normDc } from "./formato.js";
+
+const { doc, collection, onSnapshot, query, where, runTransaction, writeBatch, serverTimestamp, Timestamp, getDoc, deleteDoc } = fs;
+
+const C = { config: "pago_config", prov: "pago_proveedores", docs: "pago_documentos", nom: "pago_nominas", hist: "pago_historial" };
+const refGeneral = () => doc(db, C.config, "general");
+const refContador = () => doc(db, C.config, "contador");
+
+// ---------- estado compartido ----------
+export const st = {
+  email: "", admin: false,
+  maestro: {}, docs: [], nominas: [],
+  config: { fuentes: [...FUENTES_DEFECTO], emailDefecto: EMAIL_DEFECTO, feriados: [], prefijoArchivo: PREFIJO_DEFECTO },
+  contadorExiste: false, nextNum: 1,
+  listo: { prov: false, docs: false, nom: false, general: false, contador: false },
+  error: null
+};
+const oyentes = new Set();
+export const alCambiar = fn => { oyentes.add(fn); return () => oyentes.delete(fn) };
+let pendiente = false;
+function avisar() { if (pendiente) return; pendiente = true; queueMicrotask(() => { pendiente = false; oyentes.forEach(f => f()) }) }
+export const todoListo = () => Object.values(st.listo).every(Boolean);
+
+// Los serverTimestamp pendientes se ven con la hora estimada.
+const datos = s => s.data({ serverTimestamps: "estimate" });
+export const aFecha = t => t && typeof t.toDate === "function" ? t.toDate() : t ? new Date(t) : null;
+
+// Id de documento pendiente que ordena por fecha de ingreso (Firestore
+// entrega la colección ordenada por id). Así la nómina respeta el orden de
+// carga, igual que la lista del panel de referencia.
+let seq = 0;
+export const nuevoIdDoc = () => Date.now().toString(36).padStart(9, "0") + "-" + (seq++ % 1679616).toString(36).padStart(4, "0") + Math.random().toString(36).slice(2, 6);
+
+// ---------- acceso ----------
+// pAllowed(): poder leer pago_config/general. pAdmin(): las reglas solo dejan
+// borrar proveedores a pAdmin(), así que se prueba borrar un id que nunca es
+// un RUT (no existe, no cambia nada). La lista de correos vive solo en las reglas.
+export async function verificarAcceso(email) {
+  st.email = email;
+  try { await getDoc(refGeneral()) }
+  catch (e) { if (e.code === "permission-denied") return false; throw e }
+  try { await deleteDoc(doc(db, C.prov, "SONDA-ADMIN")); st.admin = true } catch (e) { st.admin = false }
+  return true;
+}
+
+// ---------- suscripciones ----------
+let bajas = [];
+export function suscribir() {
+  desuscribir();
+  const err = e => { st.error = e; avisar() };
+  bajas.push(onSnapshot(collection(db, C.prov), qs => {
+    const m = {}; qs.forEach(s => { m[s.id] = { ...datos(s), rut: s.id } }); st.maestro = m; st.listo.prov = true; avisar();
+  }, err));
+  bajas.push(onSnapshot(collection(db, C.docs), qs => {
+    st.docs = qs.docs.map(s => ({ ...datos(s), id: s.id })); st.listo.docs = true; avisar();
+  }, err));
+  bajas.push(onSnapshot(collection(db, C.nom), qs => {
+    st.nominas = qs.docs.map(s => ({ ...datos(s), id: s.id })).sort((a, b) => a.num - b.num); st.listo.nom = true; avisar();
+  }, err));
+  bajas.push(onSnapshot(refGeneral(), s => {
+    const d = s.exists() ? datos(s) : {};
+    st.config = {
+      fuentes: Array.isArray(d.fuentes) && d.fuentes.length ? d.fuentes : [...FUENTES_DEFECTO],
+      emailDefecto: d.emailDefecto != null ? d.emailDefecto : EMAIL_DEFECTO,
+      feriados: Array.isArray(d.feriados) ? d.feriados : [],
+      prefijoArchivo: d.prefijoArchivo || PREFIJO_DEFECTO
+    };
+    st.listo.general = true; avisar();
+  }, err));
+  bajas.push(onSnapshot(refContador(), s => {
+    st.contadorExiste = s.exists(); st.nextNum = s.exists() ? s.data().nextNum : 1; st.listo.contador = true; avisar();
+  }, err));
+}
+export function desuscribir() {
+  bajas.forEach(f => f()); bajas = [];
+  Object.keys(st.listo).forEach(k => st.listo[k] = false);
+  st.maestro = {}; st.docs = []; st.nominas = []; st.error = null;
+}
+
+// Historial de una referencia ("nomina:12", "proveedor:769915303").
+export function suscribirHistorial(ref, cb) {
+  return onSnapshot(query(collection(db, C.hist), where("ref", "==", ref)), qs => {
+    cb(qs.docs.map(s => ({ ...datos(s), id: s.id })).sort((a, b) => (aFecha(a.createdAt) || 0) - (aFecha(b.createdAt) || 0)));
+  }, () => cb([]));
+}
+
+// ---------- helpers de escritura ----------
+const f = () => firma(st.email);
+const hist = (accion, ref, detalle, antes = null, despues = null) => ({ accion, ref, detalle, antes, despues, autor: st.email, createdAt: serverTimestamp() });
+const refHist = () => doc(collection(db, C.hist));
+const refDoc = id => doc(db, C.docs, id);
+
+// Aplica operaciones (fn(batch)) en batches de hasta 400 escrituras.
+async function enLotes(ops, alAvanzar) {
+  for (let i = 0; i < ops.length; i += 400) {
+    const b = writeBatch(db);
+    ops.slice(i, i + 400).forEach(op => op(b));
+    await b.commit();
+    if (alAvanzar) alAvanzar(Math.min(i + 400, ops.length), ops.length);
+  }
+}
+
+const configCompleta = parcial => ({ ...st.config, ...parcial });
+export async function guardarConfig(parcial) {
+  const c = configCompleta(parcial);
+  await fs.setDoc(refGeneral(), { fuentes: c.fuentes, emailDefecto: c.emailDefecto, feriados: c.feriados, prefijoArchivo: c.prefijoArchivo, ...f() });
+}
+const opConfig = parcial => b => { const c = configCompleta(parcial); b.set(refGeneral(), { fuentes: c.fuentes, emailDefecto: c.emailDefecto, feriados: c.feriados, prefijoArchivo: c.prefijoArchivo, ...f() }) };
+
+// ---------- proveedores ----------
+const CAMPOS_PROV = ["nombre", "email", "banco", "forma", "cuenta", "sector"];
+const BANCARIOS = ["banco", "forma", "cuenta"];
+const soloProv = p => ({ rut: p.rut, nombre: p.nombre, email: p.email, banco: p.banco, forma: p.forma, cuenta: p.cuenta, sector: p.sector });
+
+// Entrada de historial de un alta o edición. Cuando cambia banco, cuenta o
+// forma de pago guarda antes y después completos: es el control contra fraude.
+function histProveedor(antes, despues, origen) {
+  const ref = "proveedor:" + despues.rut;
+  if (!antes) return hist("alta proveedor", ref, `${fmtRut(despues.rut)} ${despues.nombre}${origen ? " (" + origen + ")" : ""}`, null, soloProv(despues));
+  const cambios = CAMPOS_PROV.filter(k => S(antes[k]) !== S(despues[k]));
+  if (!cambios.length) return null;
+  const bancario = cambios.some(k => BANCARIOS.includes(k));
+  const sub = o => Object.fromEntries(cambios.map(k => [k, S(o[k])]));
+  return hist(bancario ? "cambio datos bancarios proveedor" : "editar proveedor", ref,
+    `${fmtRut(despues.rut)} ${despues.nombre}: cambia ${cambios.join(", ")}${origen ? " (" + origen + ")" : ""}`,
+    bancario ? soloProv(antes) : sub(antes), bancario ? soloProv(despues) : sub(despues));
+}
+function opsProveedor(antes, despues, origen) {
+  const h = histProveedor(antes, despues, origen);
+  if (antes && !h) return [];
+  const ref = doc(db, C.prov, despues.rut);
+  const data = { ...soloProv(despues), ...f() };
+  return [
+    b => antes ? b.set(ref, data, { merge: true }) : b.set(ref, { ...data, createdAt: serverTimestamp(), createdBy: st.email }),
+    b => b.set(refHist(), h)
+  ];
+}
+
+// rec: proveedor ya validado. editando: RUT que se abrió en el formulario.
+export async function guardarProveedor(rec, editando) {
+  if (editando && editando !== rec.rut) {
+    if (!st.admin) throw new Error("solo un administrador puede cambiar el RUT de un proveedor");
+    const old = st.maestro[editando];
+    const b = writeBatch(db);
+    b.set(doc(db, C.prov, rec.rut), { ...soloProv(rec), createdAt: old.createdAt || serverTimestamp(), createdBy: old.createdBy || st.email, ...f() });
+    b.delete(doc(db, C.prov, editando));
+    b.set(refHist(), hist("cambiar RUT proveedor", "proveedor:" + rec.rut, `${fmtRut(editando)} pasa a ${fmtRut(rec.rut)}`, soloProv(old), soloProv(rec)));
+    b.set(refHist(), hist("cambiar RUT proveedor", "proveedor:" + editando, `${fmtRut(editando)} pasa a ${fmtRut(rec.rut)}`, soloProv(old), soloProv(rec)));
+    return b.commit();
+  }
+  const ops = opsProveedor(st.maestro[rec.rut] || null, rec, "");
+  if (!ops.length) return "sin cambios";
+  return enLotes(ops);
+}
+export async function eliminarProveedor(rut) {
+  const old = st.maestro[rut]; const b = writeBatch(db);
+  b.delete(doc(db, C.prov, rut));
+  b.set(refHist(), hist("eliminar proveedor", "proveedor:" + rut, `${fmtRut(rut)} ${old ? old.nombre : ""}`, old ? soloProv(old) : null, null));
+  return b.commit();
+}
+
+// ---------- ingestión (resultado de importar.prepararIngesta) ----------
+export async function aplicarIngesta(prep, origen, alAvanzar) {
+  const ops = [];
+  prep.provs.forEach(({ antes, despues }) => ops.push(...opsProveedor(antes, despues, origen)));
+  prep.docs.forEach(d => ops.push(b => b.set(refDoc(nuevoIdDoc()), { ...d, createdAt: serverTimestamp(), createdBy: st.email, ...f() })));
+  if (prep.nuevasFuentes.length) ops.push(opConfig({ fuentes: prep.fuentes }));
+  if (prep.docs.length) ops.push(b => b.set(refHist(), hist("agregar documentos", "documentos", `${prep.docs.length} documentos (${Object.entries(prep.byF).map(([k, n]) => k + " " + n).join(", ")})${origen ? " desde " + origen : ""}`)));
+  await enLotes(ops, alAvanzar);
+}
+
+// ---------- documentos pendientes ----------
+export async function agregarDoc(d) {
+  const b = writeBatch(db);
+  b.set(refDoc(nuevoIdDoc()), { ...d, createdAt: serverTimestamp(), createdBy: st.email, ...f() });
+  return b.commit();
+}
+export const actualizarDocs = (ids, cambios) => enLotes(ids.map(id => b => b.update(refDoc(id), { ...cambios, ...f() })));
+const resumenDoc = d => ({ rut: d.rut, fecha: d.fecha, monto: d.monto, ndoc: d.ndoc, tipo: d.tipo, fuente: d.fuente, dc: d.dc || "" });
+export async function quitarDocs(ids, motivo) {
+  const porId = Object.fromEntries(st.docs.map(d => [d.id, d]));
+  const ops = [];
+  for (let i = 0; i < ids.length; i += 300) {
+    const tramo = ids.slice(i, i + 300);
+    tramo.forEach(id => ops.push(b => b.delete(refDoc(id))));
+    const lista = tramo.map(id => porId[id]).filter(Boolean);
+    ops.push(b => b.set(refHist(), hist("borrar documentos pendientes", "documentos", `${motivo}: ${lista.length} documentos por ${money(lista.reduce((s, d) => s + (d.monto || 0), 0))}`, { documentos: lista.map(resumenDoc) }, null)));
+  }
+  return enLotes(ops);
+}
+
+// ---------- nóminas ----------
+export class Conflicto extends Error { }
+
+// Genera la nómina en una sola transacción: reserva el número, verifica que
+// los documentos sigan pendientes y marcados y que los datos bancarios no
+// hayan cambiado, crea la nómina, borra los documentos y registra el historial.
+//
+// Si otro usuario genera al mismo tiempo, Firestore evalúa la regla del
+// contador (nextNum == anterior + 1) contra el número ya reservado por la
+// otra transacción y rechaza con permission-denied en vez de reintentar.
+// Por eso un rechazo se reintenta unas veces con espera creciente: si era
+// un choque, el reintento toma el número siguiente; si era un rechazo real
+// (sin permiso, datos inválidos), vuelve a fallar y se informa.
+export async function generarNomina(r, archivo) {
+  for (let intento = 0; ; intento++) {
+    let usado = null;
+    try { return await transaccionGenerar(r, archivo, n => { usado = n }) }
+    catch (e) {
+      if (e.code !== "permission-denied" || usado == null || intento >= 5) throw e;
+      await new Promise(ok => setTimeout(ok, 250 * (intento + 1) + Math.random() * 400));
+    }
+  }
+}
+function transaccionGenerar(r, archivo, alReservar) {
+  return runTransaction(db, async tx => {
+    const cSnap = await tx.get(refContador());
+    const num = cSnap.exists() ? cSnap.data().nextNum : 1;
+    alReservar(num);
+    const nRef = doc(db, C.nom, String(num));
+    const [nSnap, dSnaps, pSnaps] = await Promise.all([
+      tx.get(nRef),
+      Promise.all(r.ids.map(id => tx.get(refDoc(id)))),
+      Promise.all(r.groups.map(g => tx.get(doc(db, C.prov, g.p.rut))))
+    ]);
+    if (nSnap.exists()) throw new Conflicto(`La nómina N° ${num} ya existe. Recarga la página e inténtalo de nuevo.`);
+    const movidos = dSnaps.filter(s => !s.exists() || !s.data().sel || s.data().fuente !== r.fuente).length;
+    if (movidos) throw new Conflicto(`${movidos} documento${movidos > 1 ? "s" : ""} de ${r.fuente} ya no ${movidos > 1 ? "están" : "está"} pendiente${movidos > 1 ? "s" : ""} o marcado${movidos > 1 ? "s" : ""} (otro usuario ${movidos > 1 ? "los" : "lo"} movió, quitó o incluyó en otra nómina). No se generó la nómina; revisa la lista y vuelve a intentarlo.`);
+    r.groups.forEach((g, i) => {
+      const s = pSnaps[i];
+      const ahora = s.exists() ? checkProv(s.data(), st.config.emailDefecto).out : null;
+      if (!ahora || ["nombre", "email", "banco", "forma", "cuenta", "sector"].some(k => ahora[k] !== g.p[k]))
+        throw new Conflicto(`Los datos del proveedor ${fmtRut(g.p.rut)} cambiaron mientras revisabas. No se generó la nómina; revisa el paso 3 y vuelve a intentarlo.`);
+    });
+    const nomina = {
+      num, fuente: r.fuente, archivo, estado: "generada",
+      creadaAt: serverTimestamp(), creadaPor: st.email,
+      fechaCarga: "", operacion: "", obs: "", total: r.total,
+      lineas: r.lines.map(l => ({ tipo: l.tipo, f: [...l.f] })),
+      pagos: r.groups.map(g => ({ rut: g.p.rut, nombre: g.p.nombre, banco: g.p.banco, cuenta: g.p.cuenta, monto: g.sum, estado: "pendiente", motivo: "", reint: "", docs: g.docs.map(d => ({ docId: d.id, fecha: d.fecha, monto: d.monto, ndoc: d.ndoc, tipo: d.tipo, dc: d.dc || "" })) })),
+      ...f()
+    };
+    if (cSnap.exists()) tx.update(refContador(), { nextNum: num + 1, ...f() });
+    else tx.set(refContador(), { nextNum: num + 1, ...f() });
+    tx.set(nRef, nomina);
+    r.ids.forEach(id => tx.delete(refDoc(id)));
+    tx.set(refHist(), hist("generar nómina", "nomina:" + num, `N° ${num} ${r.fuente}: ${r.nBen} pagos, ${r.nDocs} documentos, total ${money(r.total)}. Archivo ${archivo}.txt`, null, { archivo, total: r.total, pagos: r.nBen, documentos: r.nDocs }));
+    return nomina;
+  });
+}
+
+// Modifica una nómina leyendo su estado actual dentro de una transacción.
+// fn(n) devuelve { cambios, hist: [..], docs: [..documentos a devolver] }.
+async function modificarNomina(id, fn) {
+  return runTransaction(db, async tx => {
+    const ref = doc(db, C.nom, id); const s = await tx.get(ref);
+    if (!s.exists()) throw new Conflicto("La nómina ya no existe");
+    const n = s.data();
+    if (n.estado === "anulada") throw new Conflicto(`La nómina N° ${n.num} está anulada y ya no se puede modificar`);
+    const r = fn(n);
+    tx.update(ref, { ...r.cambios, ...f() });
+    (r.docs || []).forEach(d => tx.set(refDoc(nuevoIdDoc()), { ...d, createdAt: serverTimestamp(), createdBy: st.email, ...f() }));
+    (r.hist || []).forEach(h => tx.set(refHist(), h));
+    return n;
+  });
+}
+const docDevuelto = (n, p, d, texto) => { const o = { rut: p.rut, fecha: d.fecha, monto: d.monto, ndoc: d.ndoc, tipo: d.tipo, fuente: n.fuente, sel: true, hist: texto }; if (d.dc) o.dc = d.dc; return o };
+const refN = n => "nomina:" + n.num;
+
+export const cargarNomina = (id, datosCarga) => modificarNomina(id, n => {
+  if (n.estado !== "generada") throw new Conflicto(`La nómina N° ${n.num} ya no está en estado generada`);
+  return { cambios: { estado: "cargada", ...datosCarga }, hist: [hist("cargar nómina", refN(n), `Cargada en BancoEstado el ${fmtISO(datosCarga.fechaCarga)}${datosCarga.operacion ? ", operación " + datosCarga.operacion : ""}${datosCarga.obs ? ". " + datosCarga.obs : ""}`, { estado: "generada" }, { estado: "cargada", ...datosCarga })] };
+});
+export const guardarCarga = (id, datosCarga) => modificarNomina(id, n => {
+  if (n.estado !== "cargada") throw new Conflicto(`La nómina N° ${n.num} no está cargada`);
+  const antes = { fechaCarga: n.fechaCarga, operacion: n.operacion, obs: n.obs };
+  return { cambios: datosCarga, hist: [hist("editar datos de carga", refN(n), "Fecha de carga, operación u observación", antes, datosCarga)] };
+});
+export const deshacerCarga = id => modificarNomina(id, n => {
+  if (n.estado !== "cargada" || !n.pagos.every(p => p.estado === "pendiente")) throw new Conflicto("Solo se deshace la carga si ningún pago tiene resultado");
+  return { cambios: { estado: "generada", fechaCarga: "" }, hist: [hist("deshacer carga", refN(n), "Vuelve a estado generada", { estado: "cargada", fechaCarga: n.fechaCarga }, { estado: "generada", fechaCarga: "" })] };
+});
+export const resultadoPago = (id, i, estado, motivo) => modificarNomina(id, n => {
+  if (n.estado !== "cargada") throw new Conflicto("El resultado se registra con la nómina cargada");
+  const pagos = n.pagos.map(p => ({ ...p })); const p = pagos[i];
+  if (p.reint && estado !== "rechazado") throw new Conflicto("Este pago ya se reintegró a pendientes; no se puede cambiar");
+  const antes = { estado: p.estado, motivo: p.motivo };
+  p.estado = estado; p.motivo = estado === "rechazado" ? S(motivo) : "";
+  if (antes.estado === p.estado && antes.motivo === p.motivo) return { cambios: {} };
+  return { cambios: { pagos }, hist: [hist("resultado de pago", refN(n), `${fmtRut(p.rut)} ${p.nombre} (${money(p.monto)}): ${antes.estado} → ${p.estado}${p.motivo ? ", motivo: " + p.motivo : ""}`, antes, { estado: p.estado, motivo: p.motivo })] };
+});
+export const pagarPendientes = id => modificarNomina(id, n => {
+  if (n.estado !== "cargada") throw new Conflicto("La nómina no está cargada");
+  const pend = n.pagos.filter(p => p.estado === "pendiente");
+  const pagos = n.pagos.map(p => p.estado === "pendiente" ? { ...p, estado: "pagado" } : p);
+  return { cambios: { pagos }, hist: [hist("resultado de pago", refN(n), `${pend.length} pagos pendientes marcados como pagados (${money(pend.reduce((s, p) => s + p.monto, 0))})`, { estado: "pendiente", pagos: pend.map(p => p.rut) }, { estado: "pagado" })] };
+});
+export const volverPendientes = (id, i) => modificarNomina(id, n => {
+  const pagos = n.pagos.map(p => ({ ...p })); const p = pagos[i];
+  if (p.estado !== "rechazado" || p.reint) throw new Conflicto("Este pago no está rechazado o ya se reintegró");
+  p.reint = todayISO();
+  const texto = `Rechazado en nómina N° ${n.num}${p.motivo ? ": " + p.motivo : ""}`;
+  return {
+    cambios: { pagos }, docs: p.docs.map(d => docDevuelto(n, p, d, texto)),
+    hist: [hist("reintegrar pago rechazado", refN(n), `${p.docs.length} documento${p.docs.length > 1 ? "s" : ""} de ${fmtRut(p.rut)} ${p.nombre} vuelven a pendientes (${money(p.monto)})`, { estado: "rechazado", motivo: p.motivo, reint: "" }, { reint: p.reint })]
+  };
+});
+export const anularNomina = id => modificarNomina(id, n => {
+  if (n.estado !== "generada") throw new Conflicto("Solo se anula una nómina que no se ha cargado en el banco");
+  const texto = `Viene de la nómina N° ${n.num} anulada`;
+  const docs = []; n.pagos.forEach(p => p.docs.forEach(d => docs.push(docDevuelto(n, p, d, texto))));
+  return { cambios: { estado: "anulada" }, docs, hist: [hist("anular nómina", refN(n), `N° ${n.num} ${n.fuente} anulada; ${docs.length} documentos vuelven a pendientes`, { estado: "generada" }, { estado: "anulada" })] };
+});
+
+// ---------- respaldo JSON (exportar e importar) ----------
+const iso = t => { const d = aFecha(t); return d ? d.toISOString() : "" };
+export function exportarRespaldo() {
+  const limpia = o => { const { updatedAt, updatedBy, createdAt, createdBy, ...r } = o; return r };
+  return {
+    version: 2, exportado: new Date().toISOString(),
+    maestro: Object.fromEntries(Object.entries(st.maestro).map(([k, p]) => [k, soloProv(p)])),
+    docs: st.docs.map(d => ({ ...limpia(d) })),
+    nominas: st.nominas.map(n => ({ ...limpia(n), creadaAt: iso(n.creadaAt) })),
+    config: { fuentes: st.config.fuentes, email: st.config.emailDefecto, feriados: st.config.feriados, prefijoArchivo: st.config.prefijoArchivo, nextNum: st.nextNum }
+  };
+}
+
+// Acepta { maestro, docs, nominas, config } (respaldo de la referencia o de
+// este panel) o las claves de localStorage bepago.*.v1, con valores en texto o no.
+export function leerRespaldo(obj) {
+  const val = v => typeof v === "string" ? JSON.parse(v) : v;
+  const get = (k, kLs) => obj[k] !== undefined ? val(obj[k]) : obj[kLs] !== undefined ? val(obj[kLs]) : undefined;
+  const maestro = get("maestro", "bepago.maestro.v1") || {};
+  const docs = get("docs", "bepago.docs.v1") || [];
+  const nominas = get("nominas", "bepago.nominas.v1") || [];
+  const config = get("config", "bepago.config.v1") || {};
+  if (typeof maestro !== "object" || !Array.isArray(docs) || !Array.isArray(nominas)) throw new Error("el archivo no tiene la forma { maestro, docs, nominas, config }");
+  return { maestro, docs, nominas, config };
+}
+
+// Resumen previo: qué se escribirá y qué no se puede importar.
+export function analizarRespaldo(r) {
+  const provs = Object.values(r.maestro).filter(p => p && S(p.rut)).map(p => ({ rut: S(p.rut), nombre: S(p.nombre), email: S(p.email), banco: S(p.banco), forma: S(p.forma), cuenta: S(p.cuenta), sector: S(p.sector) }));
+  const provNuevos = provs.filter(p => !st.maestro[p.rut]).length;
+  const provCambian = provs.filter(p => st.maestro[p.rut] && CAMPOS_PROV.some(k => S(st.maestro[p.rut][k]) !== p[k])).length;
+  const docsOk = [], docsMalos = [];
+  r.docs.forEach(d => {
+    const o = { rut: S(d.rut), fecha: S(d.fecha), monto: d.monto, ndoc: S(d.ndoc), tipo: S(d.tipo), fuente: S(d.fuente) || "GENERAL", sel: d.sel !== false };
+    if (d.hist) o.hist = S(d.hist); if (normDc(d.dc)) o.dc = normDc(d.dc);
+    (Number.isInteger(o.monto) && o.monto > 0 ? docsOk : docsMalos).push(o);
+  });
+  const nominas = r.nominas.map(n => ({
+    num: n.num, fuente: S(n.fuente), archivo: S(n.archivo), estado: n.estado,
+    creada: n.creadaAt || n.creada || "", creadaPor: S(n.creadaPor),
+    fechaCarga: S(n.fechaCarga), operacion: S(n.operacion), obs: S(n.obs), total: n.total,
+    lineas: (n.lineas || n.lines || []).map(l => ({ tipo: l.tipo || l.type, f: l.f.map(S) })),
+    pagos: (n.pagos || []).map(p => ({ rut: S(p.rut), nombre: S(p.nombre), banco: S(p.banco), cuenta: S(p.cuenta), monto: p.monto, estado: p.estado || "pendiente", motivo: S(p.motivo), reint: S(p.reint), docs: (p.docs || []).map(d => ({ docId: S(d.docId), fecha: S(d.fecha), monto: d.monto, ndoc: S(d.ndoc), tipo: S(d.tipo), dc: normDc(d.dc) })) }))
+  })).sort((a, b) => a.num - b.num);
+  const avisos = [];
+  let importarNominas = nominas.length > 0;
+  if (nominas.length) {
+    if (st.nominas.length) { importarNominas = false; avisos.push(`Firestore ya tiene ${st.nominas.length} nóminas: las nóminas del respaldo no se importan (solo se migran una vez, con la bitácora vacía).`) }
+    else if (nominas.some((n, i) => !Number.isInteger(n.num) || n.num !== nominas[0].num + i)) { importarNominas = false; avisos.push("Los números de nómina del respaldo no son correlativos: no se pueden recrear respetando el contador.") }
+    else if (st.contadorExiste && st.nextNum !== nominas[0].num) { importarNominas = false; avisos.push(`El contador de Firestore va en ${st.nextNum} y el respaldo parte en ${nominas[0].num}.`) }
+    else if (nominas.some(n => !["generada", "cargada", "anulada"].includes(n.estado))) { importarNominas = false; avisos.push("Hay nóminas con un estado desconocido.") }
+  }
+  if (docsMalos.length) avisos.push(`${docsMalos.length} documentos pendientes tienen monto inválido y no se importan (Firestore exige entero mayor que cero).`);
+  if (st.docs.length && docsOk.length) avisos.push(`Ya hay ${st.docs.length} documentos pendientes en Firestore; los del respaldo se agregan a ellos.`);
+  const fuentes = [...st.config.fuentes];
+  [...(Array.isArray(r.config.fuentes) ? r.config.fuentes : []), ...docsOk.map(d => d.fuente), ...nominas.map(n => n.fuente)].forEach(x => { if (x && !fuentes.includes(x)) fuentes.push(x) });
+  return { provs, provNuevos, provCambian, docsOk, docsMalos, nominas, importarNominas, avisos, fuentes, email: S(r.config.email) || st.config.emailDefecto };
+}
+
+export async function importarRespaldo(a, alAvanzar = () => { }) {
+  const ops = [opConfig({ fuentes: a.fuentes, emailDefecto: a.email })];
+  a.provs.forEach(p => ops.push(...opsProveedor(st.maestro[p.rut] || null, p, "importar respaldo")));
+  a.docsOk.forEach(d => ops.push(b => b.set(refDoc(nuevoIdDoc()), { ...d, createdAt: serverTimestamp(), createdBy: st.email, ...f() })));
+  ops.push(b => b.set(refHist(), hist("importar respaldo", "config", `${a.provs.length} proveedores, ${a.docsOk.length} documentos pendientes${a.importarNominas ? ", " + a.nominas.length + " nóminas" : ""}`)));
+  alAvanzar("Proveedores y documentos");
+  await enLotes(ops, (i, n) => alAvanzar(`Proveedores y documentos: ${i} de ${n} escrituras`));
+  if (!a.importarNominas) return;
+  // Las reglas solo dejan crear nóminas en estado 'generada' y con el
+  // contador en num + 1: se recrean en orden y luego se pasan a su estado.
+  for (const [i, n] of a.nominas.entries()) {
+    alAvanzar(`Nómina N° ${n.num} (${i + 1} de ${a.nominas.length})`);
+    await runTransaction(db, async tx => {
+      const c = await tx.get(refContador());
+      const actual = c.exists() ? c.data().nextNum : n.num;
+      if (actual !== n.num) throw new Conflicto(`El contador va en ${actual} y la nómina es la N° ${n.num}`);
+      if (c.exists()) tx.update(refContador(), { nextNum: n.num + 1, ...f() }); else tx.set(refContador(), { nextNum: n.num + 1, ...f() });
+      const { creada, estado, ...resto } = n;
+      tx.set(doc(db, C.nom, String(n.num)), { ...resto, estado: "generada", creadaAt: creada ? Timestamp.fromDate(new Date(creada)) : serverTimestamp(), creadaPor: n.creadaPor || st.email, ...f() });
+      tx.set(refHist(), hist("migrar nómina", "nomina:" + n.num, `Importada desde el respaldo del panel anterior, estado ${estado}`, null, { estado }));
+    });
+    if (n.estado !== "generada") {
+      const b = writeBatch(db);
+      b.update(doc(db, C.nom, String(n.num)), { estado: n.estado, ...f() });
+      await b.commit();
+    }
+  }
+}
