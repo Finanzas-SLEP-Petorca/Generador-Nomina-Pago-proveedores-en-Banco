@@ -35,6 +35,7 @@ const SECCIONES = [
       <li><b>Plantilla Excel:</b> <b>Descargar plantilla para completar</b> trae listas desplegables de tipo de documento y de fuentes. Complétala y súbela con <b>Importar archivo</b>. Si el nombre del archivo incluye la fuente (por ejemplo <code>documentos_SEP.xlsx</code>), los documentos van a esa fuente.</li>
       <li><b>Marcar para pagar:</b> solo los documentos marcados entran en la nómina. Los desmarcados quedan guardados para otro día.</li>
       <li>En la barra de la tabla puedes <b>filtrar por fuente</b>, <b>mover</b> los marcados a otra fuente o <b>quitarlos</b>.</li>
+      <li><b>Editar:</b> el botón <b>Editar</b> de cada documento lo carga en “Agregar un documento” para corregir el RUT, la fecha, el monto, el N°, el tipo, la fuente o el DC. Pulsa <b>Guardar cambios</b>; el cambio queda en el historial con el antes y el después.</li>
       <li>Las notas de crédito (tipos 60 y 61) se <b>restan</b> del total del proveedor.</li>
       <li>Un documento sin monto válido no se agrega; el aviso dice cuáles quedaron fuera.</li>
     </ul>`

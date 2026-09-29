@@ -187,6 +187,19 @@ export async function agregarDoc(d) {
   b.set(refDoc(nuevoIdDoc()), { ...d, createdAt: serverTimestamp(), createdBy: st.email, ...f() });
   return b.commit();
 }
+// Edita un documento pendiente: guarda solo lo que cambia y lo deja en el historial.
+const CAMPOS_DOC = ["rut", "fecha", "monto", "ndoc", "tipo", "fuente", "dc"];
+export async function editarDoc(id, nuevo) {
+  const antes = st.docs.find(d => d.id === id);
+  if (!antes) throw new Conflicto("El documento ya no está pendiente (otro usuario lo movió o lo incluyó en una nómina)");
+  const cambios = CAMPOS_DOC.filter(k => S(antes[k]) !== S(nuevo[k]));
+  if (!cambios.length) return "sin cambios";
+  const sub = o => Object.fromEntries(cambios.map(k => [k, k === "monto" ? o[k] : S(o[k])]));
+  const b = writeBatch(db);
+  b.update(refDoc(id), { ...Object.fromEntries(cambios.map(k => [k, nuevo[k] ?? ""])), ...f() });
+  b.set(refHist(), hist("editar documento pendiente", "documentos", `Doc ${S(nuevo.ndoc)} de ${fmtRut(nuevo.rut)} (${money(nuevo.monto)}): cambia ${cambios.join(", ")}`, sub(antes), sub(nuevo)));
+  return b.commit();
+}
 export const actualizarDocs = (ids, cambios) => enLotes(ids.map(id => b => b.update(refDoc(id), { ...cambios, ...f() })));
 const resumenDoc = d => ({ rut: d.rut, fecha: d.fecha, monto: d.monto, ndoc: d.ndoc, tipo: d.tipo, fuente: d.fuente, dc: d.dc || "" });
 export async function quitarDocs(ids, motivo) {

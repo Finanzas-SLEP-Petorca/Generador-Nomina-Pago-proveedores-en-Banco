@@ -17,7 +17,7 @@
  "imports": {
   "./js/app.js": "./js/app.js?v=77ba9d558b",
   "./js/catalogos.js": "./js/catalogos.js?v=10b7750732",
-  "./js/datos.js": "./js/datos.js?v=6615b5dc15",
+  "./js/datos.js": "./js/datos.js?v=be1329dec0",
   "./js/excel.js": "./js/excel.js?v=45e9b20adf",
   "./js/firebase-config.js": "./js/firebase-config.js?v=ffcd41549c",
   "./js/firebase.js": "./js/firebase.js?v=6eba6d64a6",
@@ -26,9 +26,9 @@
   "./js/ui/abonos.js": "./js/ui/abonos.js?v=390bf1777e",
   "./js/ui/comun.js": "./js/ui/comun.js?v=d2fdaccfc5",
   "./js/ui/config.js": "./js/ui/config.js?v=fc62f90b44",
-  "./js/ui/guia.js": "./js/ui/guia.js?v=25a8a850d4",
+  "./js/ui/guia.js": "./js/ui/guia.js?v=486ae09fd1",
   "./js/ui/paso1.js": "./js/ui/paso1.js?v=8963c78bcc",
-  "./js/ui/paso2.js": "./js/ui/paso2.js?v=915197516d",
+  "./js/ui/paso2.js": "./js/ui/paso2.js?v=db8f561e91",
   "./js/ui/paso3.js": "./js/ui/paso3.js?v=aff19918ec",
   "./js/ui/paso4.js": "./js/ui/paso4.js?v=cfa737bcbb",
   "./js/ui/tema.js": "./js/ui/tema.js?v=e5740e8ffa"
@@ -176,7 +176,7 @@
   </div>
 
   <div class="card">
-    <h2>Agregar un documento</h2>
+    <h2 id="dFormTitulo">Agregar un documento</h2>
     <div class="grid" style="margin-top:10px">
       <label>RUT proveedor<input id="dRut" list="dlRut" autocomplete="off"></label>
       <label>Fecha documento<input id="dFecha" type="date"></label>
@@ -187,7 +187,7 @@
       <label>DC (opcional)<input id="dDc" placeholder="DC 54" autocomplete="off"></label>
     </div>
     <datalist id="dlRut"></datalist>
-    <div class="row"><button class="btn primary" id="btnAddDoc">Agregar documento</button><span class="hint" id="dRutName"></span></div>
+    <div class="row"><button class="btn primary" id="btnAddDoc">Agregar documento</button><button class="btn" id="btnCancelDoc" hidden>Cancelar edición</button><span class="hint" id="dRutName"></span></div>
   </div>
 
   <div class="card">

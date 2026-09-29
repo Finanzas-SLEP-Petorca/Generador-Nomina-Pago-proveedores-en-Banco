@@ -150,6 +150,24 @@ try {
   await U.click("#btnAddDoc");
   await esperar(U, () => document.getElementById("cntDocs").textContent === "4/4");
   log("documentos pegados y a mano con DC:", await toastTxt(U));
+  // Editar un documento pendiente: se carga en el formulario, se corrige y queda en el historial.
+  const idDoc = await U.$eval("#tbDocs tr", () => [...document.querySelectorAll("#tbDocs tr")].find(t => t.textContent.includes("903")).querySelector("[data-ed]").dataset.ed);
+  await U.click(`#tbDocs [data-ed="${idDoc}"]`);
+  assert.match(await U.textContent("#dFormTitulo"), /Editar documento 903/);
+  assert.equal(await U.inputValue("#dFecha"), "2026-09-12");
+  await U.fill("#dMonto", "5500"); await U.fill("#dDc", "DC 57");
+  await U.click("#btnAddDoc");
+  // (no se espera el aviso: el del alta anterior puede llegar después y taparlo)
+  await esperar(U, () => document.getElementById("dFormTitulo").textContent === "Agregar un documento");
+  await esperar(U, () => { const t = [...document.querySelectorAll("#tbDocs tr")].find(t => t.textContent.includes("903")); return t && t.textContent.includes("$5.500") && t.textContent.includes("DC 57") });
+  assert.equal(await U.textContent("#dFormTitulo"), "Agregar un documento");
+  const hDoc = await U.evaluate(async () => {
+    const fs = await import("https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js");
+    const q = await fs.getDocs(fs.query(fs.collection(fs.getFirestore(), "pago_historial"), fs.where("accion", "==", "editar documento pendiente")));
+    return q.docs.map(d => d.data()).map(h => [h.antes.monto, h.despues.monto, h.antes.dc, h.despues.dc, h.autor]);
+  });
+  assert.deepEqual(hDoc, [[5000, 5500, "DC 56", "DC 57", USUARIO]]);
+  log("editar documento pendiente: se corrige y el historial guarda antes y después");
 
   await A.click('.steps button[data-step="3"]'); await U.click('.steps button[data-step="3"]');
   await A.click('#tbFuentes tr[data-f="SEP"]'); await U.click('#tbFuentes tr[data-f="PIE"]');
@@ -294,7 +312,7 @@ try {
     assert.match(await A.textContent("#abFormTitulo"), /Editar abono/);
     await A.fill("#abMonto", "33333"); await A.selectOption("#abBanco", "012"); await A.selectOption("#abForma", "29");
     await A.click("#abBtnAgregar");
-    await esperar(A, () => document.getElementById("toast").textContent.startsWith("Abono actualizado"));
+    await esperar(A, () => document.getElementById("abFormTitulo").textContent === "Agregar un abono");
     await esperar(A, () => document.getElementById("abTabla").textContent.includes("$33.333") && document.getElementById("abTabla").textContent.includes("sin cuenta"));
     assert.equal(await A.textContent("#abFormTitulo"), "Agregar un abono");
     const hEd = await A.evaluate(async () => {
