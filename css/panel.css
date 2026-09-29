@@ -323,3 +323,11 @@ td input.inl{padding:4px 8px;font-size:13px;width:190px;background:var(--surface
   .guia-indice a{white-space:nowrap}
   .guia-cuerpo{padding:4px 16px 20px}
 }
+.generada{width:min(620px,calc(100vw - 32px))}
+.gen-cuerpo{padding:14px 22px 22px}
+.gen-cuerpo p{margin:0 0 12px}
+.gen-archivos{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:0 0 14px}
+.gen-archivos .btn{justify-content:flex-start;text-align:left;padding:14px 16px}
+.gen-archivos .btn span{display:flex;flex-direction:column;gap:3px;min-width:0}
+.gen-archivos small{font-weight:400;font-size:12px;opacity:.9;overflow-wrap:anywhere}
+@media (max-width:640px){.gen-archivos{grid-template-columns:1fr}}

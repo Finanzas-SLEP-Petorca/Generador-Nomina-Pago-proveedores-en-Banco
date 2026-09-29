@@ -44,7 +44,7 @@ const SECCIONES = [
       <li>La tabla muestra una fila por fuente con sus documentos marcados y el estado: <span class="tag okk">lista</span> o <span class="tag err">N errores</span>. Toca una fuente para revisarla.</li>
       <li>Los <b>errores</b> bloquean solo esa fuente; los <b>avisos</b>, como una nota de crédito descontada, no bloquean.</li>
       <li>Revisa el archivo con <b>Planilla BancoEstado</b> o <b>Texto .txt</b>. <b>Excel borrador</b> sirve para revisión o visto bueno y no registra nada.</li>
-      <li><b>Generar nómina N° X y registrar</b> reserva el número correlativo, saca los documentos de pendientes y descarga el <b>.txt</b> y el <b>Excel BancoEstado</b>. Si otra persona movió alguno de esos documentos mientras revisabas, no se genera y te avisa.</li>
+      <li><b>Generar nómina N° X y registrar</b> reserva el número correlativo, saca los documentos de pendientes y descarga el <b>.txt</b> y el <b>Excel BancoEstado</b>. Se abre además una ventana con un botón para cada archivo, por si el navegador bloqueó la segunda descarga. Si otra persona movió alguno de esos documentos mientras revisabas, no se genera y te avisa.</li>
       <li>El archivo se llama <code>prefijo_FUENTE</code>, por ejemplo <code>20260926_PAGO_PROVEEDORES_SEP.txt</code>. La fuente se agrega sola.</li>
       <li>Si dos personas generan a la vez, cada una recibe un número distinto.</li>
     </ul>`

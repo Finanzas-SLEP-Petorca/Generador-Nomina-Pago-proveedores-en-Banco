@@ -8,7 +8,7 @@
 <link rel="icon" type="image/png" href="assets/logo_slep_petorca.png">
 <!-- Tema elegido (Claro/Oscuro/Sistema) aplicado antes de pintar, para no parpadear -->
 <script>try{var t=localStorage.getItem("pago.tema");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
-<link rel="stylesheet" href="css/panel.css?v=fa2549af38">
+<link rel="stylesheet" href="css/panel.css?v=a2dd25e939">
 <!-- SheetJS y JSZip con versión fijada (copias en vendor/) -->
 <script src="vendor/xlsx-0.18.5.full.min.js" defer></script>
 <script src="vendor/jszip-3.10.1.min.js" defer></script>
@@ -25,10 +25,10 @@
   "./js/importar.js": "./js/importar.js?v=539894770a",
   "./js/ui/comun.js": "./js/ui/comun.js?v=d2fdaccfc5",
   "./js/ui/config.js": "./js/ui/config.js?v=fc62f90b44",
-  "./js/ui/guia.js": "./js/ui/guia.js?v=1b1a12555b",
+  "./js/ui/guia.js": "./js/ui/guia.js?v=3cbb2ee6d8",
   "./js/ui/paso1.js": "./js/ui/paso1.js?v=8963c78bcc",
   "./js/ui/paso2.js": "./js/ui/paso2.js?v=915197516d",
-  "./js/ui/paso3.js": "./js/ui/paso3.js?v=41819f250d",
+  "./js/ui/paso3.js": "./js/ui/paso3.js?v=ec6d67f56c",
   "./js/ui/paso4.js": "./js/ui/paso4.js?v=e4b6e63d34",
   "./js/ui/tema.js": "./js/ui/tema.js?v=e5740e8ffa"
  }
@@ -342,6 +342,21 @@
   <div class="guia-in">
     <nav class="guia-indice" id="guiaIndice" aria-label="Secciones de la guía"></nav>
     <div class="guia-cuerpo" id="guiaCuerpo"></div>
+  </div>
+</dialog>
+<dialog class="guia generada" id="dlgGenerada" aria-labelledby="genTitulo">
+  <div class="guia-cab">
+    <div><p class="eyebrow">Revisar y generar</p><h2 class="titulo" id="genTitulo"></h2></div>
+    <button class="btn small" id="genCerrar" type="button">Cerrar ✕</button>
+  </div>
+  <div class="gen-cuerpo">
+    <p id="genResumen"></p>
+    <p class="hint">Los archivos se intentaron descargar solos. Si el navegador bloqueó alguno, descárgalo aquí:</p>
+    <div class="gen-archivos">
+      <button class="btn primary" id="genTxt" type="button"><span><b>Descargar .txt</b><small id="genTxtNombre"></small></span></button>
+      <button class="btn primary" id="genXlsx" type="button"><span><b>Descargar Excel BancoEstado</b><small id="genXlsxNombre"></small></span></button>
+    </div>
+    <p class="hint">Después de subirla al portal de BancoEstado, pulsa <b>Marcar como cargada</b> en el detalle de la nómina, con la fecha de carga y la fecha de pago.</p>
   </div>
 </dialog>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>

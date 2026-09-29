@@ -1,6 +1,6 @@
 // Paso 3: revisar y generar una nómina por fuente.
 
-import { S, build, toTxt, activeFuentes, fileName, expandPrefijo, money } from "../formato.js";
+import { S, build, toTxt, activeFuentes, fileName, expandPrefijo, nombreNomina, money } from "../formato.js";
 import { bankWorkbook } from "../excel.js";
 import { st, guardarConfig, generarNomina } from "../datos.js";
 import { $, esc, toast, accion, descargar, prefs, guardarPrefs, go, mensajeError } from "./comun.js";
@@ -41,21 +41,38 @@ export function init() {
   $("btnGen").onclick = () => {
     const r = renderReview(); if (r.errs || !r.lines.length) return;
     const num = st.nextNum;
-    if (!confirm(`Se registrará la nómina N° ${num} (${r.fuente}): ${r.nBen} pagos por ${money(r.total)}.\n\nSus ${r.nDocs} documentos salen de pendientes y quedan asociados a esta nómina. Luego se descarga el .txt.`)) return;
+    if (!confirm(`Se registrará la nómina N° ${num} (${r.fuente}): ${r.nBen} pagos por ${money(r.total)}.\n\nSus ${r.nDocs} documentos salen de pendientes y quedan asociados a esta nómina. Luego se descargan el .txt y el Excel BancoEstado.`)) return;
     accion($("btnGen"), async () => {
       const archivo = nombreArchivo(r.fuente);
       const n = await generarNomina(r, archivo);
       abrirNomina(String(n.num)); go(4);
-      // Se descargan los dos archivos de la nómina registrada: el .txt para
-      // cargar en el banco y el Excel BancoEstado, con el mismo nombre.
-      descargar(n.archivo + ".txt", toTxt(n.lineas));
-      let excel = true;
-      try { descargar(n.archivo + ".xlsx", await bankWorkbook(n.lineas)) }
-      catch (e) { excel = false; toast("Nómina registrada y .txt descargado, pero no se pudo armar el Excel: " + mensajeError(e) + ". Descárgalo desde la bitácora.") }
-      if (excel) toast(`Nómina N° ${n.num} registrada. Se descargaron ${n.archivo}.txt y ${n.archivo}.xlsx`);
-      if (n.num !== num) toast(`Otro usuario generó antes la N° ${num}: esta nómina quedó con el N° ${n.num}. Se descargaron ${n.archivo}.txt${excel ? " y .xlsx" : ""}`);
+      // Los dos archivos de la nómina registrada, con el mismo nombre: el .txt
+      // y el Excel BancoEstado. Se intenta bajar ambos de inmediato, y además
+      // se muestran en una ventana con un botón para cada uno, porque algunos
+      // navegadores bloquean la segunda descarga automática seguida.
+      const nombre = nombreNomina(n), txt = toTxt(n.lineas);
+      let xlsx = null, errXlsx = "";
+      try { xlsx = await bankWorkbook(n.lineas) } catch (e) { errXlsx = mensajeError(e) }
+      descargar(nombre + ".txt", txt);
+      if (xlsx) descargar(nombre + ".xlsx", xlsx);
+      mostrarGenerada(n, nombre, txt, xlsx, errXlsx, n.num !== num ? num : null);
     });
   };
+}
+
+// Ventana de nómina registrada con los dos archivos listos para descargar.
+function mostrarGenerada(n, nombre, txt, xlsx, errXlsx, numEsperado) {
+  const dlg = $("dlgGenerada");
+  $("genTitulo").innerHTML = `Nómina N° ${n.num} <em>registrada</em>`;
+  $("genResumen").textContent = `${n.fuente}: ${n.pagos.length} pago${n.pagos.length === 1 ? "" : "s"} por ${money(n.total)}. Sus documentos pasaron a la bitácora.` +
+    (numEsperado ? ` Otro usuario generó antes la N° ${numEsperado}, por eso quedó con el N° ${n.num}.` : "");
+  $("genTxtNombre").textContent = nombre + ".txt";
+  $("genXlsxNombre").textContent = xlsx ? nombre + ".xlsx" : "No se pudo armar: " + errXlsx;
+  $("genTxt").onclick = () => descargar(nombre + ".txt", txt);
+  $("genXlsx").disabled = !xlsx;
+  $("genXlsx").onclick = () => { if (xlsx) descargar(nombre + ".xlsx", xlsx) };
+  $("genCerrar").onclick = () => dlg.close();
+  dlg.showModal();
 }
 
 function setView(pl) { $("vPl").setAttribute("aria-pressed", pl); $("vTx").setAttribute("aria-pressed", !pl); $("bePrev").hidden = !pl; $("txPrev").hidden = pl }

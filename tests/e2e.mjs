@@ -114,6 +114,16 @@ try {
   const [gen, genXl] = await descargas(A, 2, () => A.click("#btnGen"));
   assert.equal(genXl.nombre, gen.nombre.replace(/\.txt$/, ".xlsx"));
   assert.equal(Buffer.compare(genXl.bytes.subarray(0, 2), Buffer.from("PK")), 0); // es un .xlsx (zip)
+  // Ventana de nómina registrada: botones para bajar otra vez cada archivo.
+  await esperar(A, () => document.getElementById("dlgGenerada").open);
+  assert.match(await A.textContent("#genTitulo"), /Nómina N° 1/);
+  const deNuevo = await descarga(A, () => A.click("#genXlsx"));
+  assert.equal(deNuevo.nombre, genXl.nombre); assert.equal(Buffer.compare(deNuevo.bytes, genXl.bytes), 0);
+  const txtDeNuevo = await descarga(A, () => A.click("#genTxt"));
+  assert.equal(Buffer.compare(txtDeNuevo.bytes, gen.bytes), 0);
+  await A.screenshot({ path: AQUI + "nomina_generada.png" });
+  await A.click("#genCerrar"); await esperar(A, () => !document.getElementById("dlgGenerada").open);
+  log("al generar se abre la ventana con Descargar .txt y Descargar Excel BancoEstado (mismos archivos)");
   assert.match(gen.nombre, /_PAGO_PROVEEDORES_GENERAL\.txt$/);
   assert.equal(Buffer.compare(gen.bytes, Buffer.from(refTxt, "utf8")), 0, "el .txt difiere de la referencia");
   writeFileSync(AQUI + "salida_nomina1.txt", gen.bytes);
@@ -145,6 +155,7 @@ try {
   await A.click('#tbFuentes tr[data-f="SEP"]'); await U.click('#tbFuentes tr[data-f="PIE"]');
   await esperar(A, () => !document.getElementById("btnGen").disabled); await esperar(U, () => !document.getElementById("btnGen").disabled);
   const [[gA], [gU]] = await Promise.all([descargas(A, 2, () => A.click("#btnGen")), descargas(U, 2, () => U.click("#btnGen"))]).catch(async e => { console.log("toast A:", await toastTxt(A), "| toast U:", await toastTxt(U)); throw e });
+  for (const P of [A, U]) { await esperar(P, () => document.getElementById("dlgGenerada").open); await P.click("#genCerrar") }
   await esperar(A, () => document.querySelectorAll("#tbBit tr[data-id]").length === 3);
   const nums = await A.$$eval("#tbBit tr[data-id]", trs => trs.map(t => t.dataset.id).sort());
   assert.deepEqual(nums, ["1", "2", "3"]);
@@ -154,19 +165,25 @@ try {
   await A.click('.steps button[data-step="4"]');
   await A.click('#tbBit tr[data-id="1"]');
   // Fecha de pago: por defecto el día hábil siguiente a la carga; no puede ser anterior a la carga.
-  await A.fill("#nFecha", "2026-09-25"); await A.dispatchEvent("#nFecha", "change");  // viernes
-  assert.equal(await A.inputValue("#nFechaPago"), "2026-09-28");                        // lunes
-  await A.fill("#nFechaPago", "2026-09-24"); await A.click("#nCargar");
+  // Fechas calculadas desde hoy: un viernes futuro para la carga y su lunes para el pago.
+  const iso = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  const dmy = d => String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + "/" + d.getFullYear();
+  const vie = new Date(); vie.setDate(vie.getDate() + 1); while (vie.getDay() !== 5) vie.setDate(vie.getDate() + 1);
+  const jue = new Date(vie); jue.setDate(vie.getDate() - 1);
+  const lun = new Date(vie); lun.setDate(vie.getDate() + 3);
+  await A.fill("#nFecha", iso(vie)); await A.dispatchEvent("#nFecha", "change");  // viernes
+  assert.equal(await A.inputValue("#nFechaPago"), iso(lun));                       // lunes
+  await A.fill("#nFechaPago", iso(jue)); await A.click("#nCargar");
   await esperar(A, () => document.getElementById("toast").textContent.includes("no puede ser anterior"));
-  await A.fill("#nFechaPago", "2026-09-28");
+  await A.fill("#nFechaPago", iso(lun));
   await A.click("#nCargar");
   await esperar(A, () => document.querySelector("#hDetail .tag")?.textContent.includes("Cargada"));
-  await esperar(A, () => document.querySelector('#tbBit tr[data-id="1"]').textContent.includes("28/09/2026"));
-  assert.match(await A.textContent("#hDetail .due"), /Fecha de pago: 28\/09\/2026/);
+  await esperar(A, f => document.querySelector('#tbBit tr[data-id="1"]').textContent.includes(f), dmy(lun));
+  assert.ok((await A.textContent("#hDetail .due")).includes("Fecha de pago: " + dmy(lun)));
   log("fecha de pago: sugiere el día hábil siguiente, rechaza fechas anteriores a la carga y se ve en la bitácora");
-  assert.match(await A.textContent("#hDetail .due"), /Generada el .* por Admin1\. Cargada en BancoEstado el 25\/09\/2026 por Admin1\./);
+  assert.ok(new RegExp("Generada el .* por Admin1\\. Cargada en BancoEstado el " + dmy(vie).replace(/\//g, "\\/") + " por Admin1\\.").test(await A.textContent("#hDetail .due")));
   assert.match(await A.textContent('#tbBit tr[data-id="1"]'), /Admin1/);
-  assert.match(await A.textContent("#hDetail .tag"), /resultado desde lun 28\/09 14:00/); // 14:00 del día de pago
+  assert.ok((await A.textContent("#hDetail .tag")).includes("resultado desde lun " + dmy(lun).slice(0, 5) + " 14:00")); // 14:00 del día de pago
   log("trazabilidad: quién generó y quién cargó; resultado desde las 14:00 del día de pago");
   await A.selectOption('#hDetail [data-pe="1"]', "rechazado");
   await esperar(A, () => document.querySelector('#hDetail [data-pm="1"]'));
@@ -178,7 +195,7 @@ try {
   await esperar(A, () => /Procesada/.test(document.querySelector("#hDetail .tag")?.textContent));
   await esperar(A, () => document.querySelectorAll("#nHist li").length >= 5);
   const histN1 = await A.$$eval("#nHist li b", b => b.map(x => x.textContent));
-  assert.match(await A.textContent("#nHist"), /fecha de pago 28\/09\/2026/);
+  assert.ok((await A.textContent("#nHist")).includes("fecha de pago " + dmy(lun)));
   log("historial de la nómina 1:", histN1.join(" → "));
   await A.click('.steps button[data-step="2"]');
   assert.match(await A.textContent("#tbDocs"), /Rechazado en nómina N° 1: cuenta inexistente/);
