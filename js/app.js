@@ -8,6 +8,7 @@ import * as paso2 from "./ui/paso2.js";
 import * as paso3 from "./ui/paso3.js";
 import * as paso4 from "./ui/paso4.js";
 import * as config from "./ui/config.js";
+import * as abonos from "./ui/abonos.js";
 import * as tema from "./ui/tema.js";
 import * as guia from "./ui/guia.js";
 import { activeFuentes, money, nombreDe } from "./formato.js";
@@ -32,6 +33,7 @@ function go(n) {
   if (n === "3") paso3.renderReview();
   if (n === "4") paso4.renderBit();
   if (n === "5") config.renderConfig();
+  if (n === "6") abonos.renderAbonos();
   window.scrollTo({ top: 0 });
 }
 
@@ -46,15 +48,17 @@ function renderAll() {
   if ($("p3").classList.contains("on")) paso3.renderReview();
   paso4.renderBitCount(); if ($("p4").classList.contains("on")) paso4.renderBit();
   if ($("p5").classList.contains("on")) config.renderConfig();
+  $("cntAbonos").textContent = abonos.contarAbonos();
+  if ($("p6").classList.contains("on")) abonos.renderAbonos();
 }
 // Tarjeta de estado de cada encabezado: próxima nómina y datos en tiempo real.
 function renderEstado() {
-  const pend = st.docs.filter(d => d.sel);
   const hora = new Date().toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" });
-  const t = `Próxima nómina N° ${st.nextNum}`;
-  const s = `${pend.length} documento${pend.length === 1 ? "" : "s"} marcado${pend.length === 1 ? "" : "s"} · ${money(pend.reduce((a, d) => a + (d.monto || 0), 0))} · En tiempo real, ${hora}`;
-  document.querySelectorAll('[data-estado="t"]').forEach(e => e.textContent = t);
-  document.querySelectorAll('[data-estado="s"]').forEach(e => e.textContent = s);
+  const texto = (lista, que) => `${lista.length} ${que}${lista.length === 1 ? "" : "s"} marcado${lista.length === 1 ? "" : "s"} · ${money(lista.reduce((a, d) => a + (d.monto || 0), 0))} · En tiempo real, ${hora}`;
+  const docs = texto(st.docs.filter(d => d.sel), "documento"), abn = texto(st.abonos.filter(a => a.sel), "abono");
+  document.querySelectorAll('[data-estado="t"]').forEach(e => e.textContent = `Próxima nómina N° ${st.nextNum}`);
+  // En la pestaña Remuneraciones la tarjeta cuenta abonos; en el resto, documentos.
+  document.querySelectorAll('[data-estado="s"]').forEach(e => e.textContent = e.closest("#p6") ? abn : docs);
 }
 
 
@@ -65,7 +69,7 @@ vista.go = go;
 document.querySelectorAll(".steps button[data-step]").forEach(b => b.addEventListener("click", () => go(b.dataset.step)));
 // Configuración abre y cierra, volviendo al paso en que se estaba.
 $("btnConfig").onclick = () => { if ($("p5").classList.contains("on")) go(prefs.lastStep || "1"); else { prefs.lastStep = prefs.step; go(5) } };
-[tema, guia, paso1, paso2, paso3, paso4, config].forEach(m => m.init());
+[tema, guia, paso1, paso2, paso3, abonos, paso4, config].forEach(m => m.init());
 
 let errorMostrado = null;
 alCambiar(() => {
@@ -115,6 +119,6 @@ if (!configurado) {
     $("usuario").title = user.email;
     pantalla("app"); $("cargando").hidden = false;
     suscribir();
-    go(["1", "2", "3", "4", "5"].includes(prefs.step) ? prefs.step : "1");
+    go(["1", "2", "3", "4", "5", "6"].includes(prefs.step) ? prefs.step : "1");
   });
 }

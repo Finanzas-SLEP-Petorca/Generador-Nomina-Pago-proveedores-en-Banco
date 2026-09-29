@@ -61,10 +61,10 @@ export function init() {
 }
 
 // Ventana de nómina registrada con los dos archivos listos para descargar.
-function mostrarGenerada(n, nombre, txt, xlsx, errXlsx, numEsperado) {
+export function mostrarGenerada(n, nombre, txt, xlsx, errXlsx, numEsperado) {
   const dlg = $("dlgGenerada");
   $("genTitulo").innerHTML = `Nómina N° ${n.num} <em>registrada</em>`;
-  $("genResumen").textContent = `${n.fuente}: ${n.pagos.length} pago${n.pagos.length === 1 ? "" : "s"} por ${money(n.total)}. Sus documentos pasaron a la bitácora.` +
+  $("genResumen").textContent = `${n.tipo === "abonos" ? "Remuneraciones " + (n.concepto || "") + ", " : ""}${n.fuente}: ${n.pagos.length} pago${n.pagos.length === 1 ? "" : "s"} por ${money(n.total)}. Sus ${n.tipo === "abonos" ? "abonos" : "documentos"} pasaron a la bitácora.` +
     (numEsperado ? ` Otro usuario generó antes la N° ${numEsperado}, por eso quedó con el N° ${n.num}.` : "");
   $("genTxtNombre").textContent = nombre + ".txt";
   $("genXlsxNombre").textContent = xlsx ? nombre + ".xlsx" : "No se pudo armar: " + errXlsx;

@@ -115,6 +115,7 @@ Solo entran cuentas con correo verificado (`email_verified`); el acceso por enla
 | `pago_proveedores/{rut}` | Maestro. Id = RUT sin puntos ni guion |
 | `pago_documentos/{id}` | Documentos pendientes, con `dc` y `hist` opcionales. El id ordena por fecha de ingreso, así la nómina respeta el orden de carga |
 | `pago_nominas/{num}` | Nóminas: `lineas` como mapas `{tipo, f}`, `pagos` con sus documentos, `fechaCarga`, `fechaPago` (día en que el banco paga la nómina; se mantiene aunque después haya rechazos), `creadaPor` y `cargadaPor` (quién generó y quién cargó; las reglas exigen que sea quien escribe). El resultado del banco se espera desde las 14:00 del día de pago |
+| `pago_abonos/{id}` | Abonos pendientes de la nómina de remuneraciones (7 columnas): RUT, nombre, email, banco, forma, cuenta, monto, fuente, concepto, glosa |
 | `pago_historial/{id}` | Bitácora de acciones; solo se agregan entradas |
 
 Toda escritura lleva `updatedBy` (correo) y `updatedAt` (hora del servidor). El historial registra:
@@ -127,6 +128,20 @@ Toda escritura lleva `updatedBy` (correo) y `updatedAt` (hora del servidor). El 
 Tamaño: una nómina ocupa cerca de 300 bytes por documento. Con 500 documentos pesa unos 150 KB; el límite de 1 MB de Firestore recién se acercaría con unos 3.000 documentos en una sola nómina.
 
 Las preferencias de interfaz quedan en `localStorage`: último paso abierto, filtros, fuente por defecto al pegar y "agrupar". Los datos no se guardan en el navegador: Firestore usa caché en memoria.
+
+## Nómina de remuneraciones y abonos (7 columnas)
+
+La pestaña **Remuneraciones** arma nóminas con la planilla BancoEstado **“Pago Solo Abonos DET” de 7 columnas**. Sirve para pagar a personas naturales: viáticos, fondos fijos y cajas chicas, honorarios y remuneraciones. Cada línea del archivo es un pago: RUT, nombre, email, banco, forma de pago, N° de cuenta y monto. No lleva documentos ni sector.
+
+- **Cargar:** se importa la planilla del banco ya completa (hoja DETALLE, desde la fila 4) o se pegan filas. El concepto y la fuente se deducen del nombre del archivo cuando se puede.
+- **Normalización:** los nombres pasan a mayúsculas sin tildes ni ñ. Las formas de pago sin cuenta (20, 23, 28, 29: vale vista o pago cash) van con cuenta 0, y CuentaRUT (30) usa el RUT sin dígito verificador.
+- **Controles:** el panel avisa si:
+  - los datos bancarios de una persona cambiaron respecto de su último pago;
+  - un RUT y monto se repiten en la nómina;
+  - hay un pago igual en otra nómina aún sin resultado.
+- **Generar:** una nómina por fuente, con el mismo correlativo y la misma bitácora que proveedores (tipo "Remuneraciones"). Se descargan el .txt (7 campos separados por tabulación, CRLF) y el Excel, hecho sobre `assets/plantilla_abonos_7col.xlsx`, en el que solo se llenan las filas de la hoja DETALLE. El nombre es `AAAAMMDD_CONCEPTO_FUENTE`.
+- **Rechazos y anulación:** los abonos vuelven a la pestaña con sus datos bancarios.
+- **Reglas:** requiere el bloque `pago_abonos` del archivo de reglas. Mientras no se publique, la pestaña lo avisa y el resto del panel sigue funcionando.
 
 ## Diseño
 

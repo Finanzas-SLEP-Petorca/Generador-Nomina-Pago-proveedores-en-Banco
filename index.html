@@ -8,14 +8,14 @@
 <link rel="icon" type="image/png" href="assets/logo_slep_petorca.png">
 <!-- Tema elegido (Claro/Oscuro/Sistema) aplicado antes de pintar, para no parpadear -->
 <script>try{var t=localStorage.getItem("pago.tema");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
-<link rel="stylesheet" href="css/panel.css?v=a2dd25e939">
+<link rel="stylesheet" href="css/panel.css?v=0d0b0714c7">
 <!-- SheetJS y JSZip con versión fijada (copias en vendor/) -->
 <script src="vendor/xlsx-0.18.5.full.min.js" defer></script>
 <script src="vendor/jszip-3.10.1.min.js" defer></script>
 <script type="importmap">
 {
  "imports": {
-  "./js/app.js": "./js/app.js?v=8610456712",
+  "./js/app.js": "./js/app.js?v=77ba9d558b",
   "./js/catalogos.js": "./js/catalogos.js?v=e5f99882ac",
   "./js/datos.js": "./js/datos.js?v=a2865de850",
   "./js/excel.js": "./js/excel.js?v=45e9b20adf",
@@ -23,13 +23,14 @@
   "./js/firebase.js": "./js/firebase.js?v=6eba6d64a6",
   "./js/formato.js": "./js/formato.js?v=a58b38ca5c",
   "./js/importar.js": "./js/importar.js?v=51b36dd698",
+  "./js/ui/abonos.js": "./js/ui/abonos.js?v=6fc627252a",
   "./js/ui/comun.js": "./js/ui/comun.js?v=d2fdaccfc5",
   "./js/ui/config.js": "./js/ui/config.js?v=fc62f90b44",
-  "./js/ui/guia.js": "./js/ui/guia.js?v=3cbb2ee6d8",
+  "./js/ui/guia.js": "./js/ui/guia.js?v=65d5c0be7c",
   "./js/ui/paso1.js": "./js/ui/paso1.js?v=8963c78bcc",
   "./js/ui/paso2.js": "./js/ui/paso2.js?v=915197516d",
-  "./js/ui/paso3.js": "./js/ui/paso3.js?v=ec6d67f56c",
-  "./js/ui/paso4.js": "./js/ui/paso4.js?v=e4b6e63d34",
+  "./js/ui/paso3.js": "./js/ui/paso3.js?v=aff19918ec",
+  "./js/ui/paso4.js": "./js/ui/paso4.js?v=1a1b6a3b63",
   "./js/ui/tema.js": "./js/ui/tema.js?v=e5740e8ffa"
  }
 }
@@ -81,9 +82,10 @@
 
 <nav class="steps" role="tablist">
   <button role="tab" data-step="1" aria-selected="true"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span class="lbl">Proveedores</span><span class="cnt" id="cntProv">0</span></button>
-  <button role="tab" data-step="2" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg><span class="lbl">Documentos a pagar</span><span class="cnt" id="cntDocs">0</span></button>
+  <button role="tab" data-step="2" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg><span class="lbl">Documentos</span><span class="cnt" id="cntDocs">0</span></button>
   <button role="tab" data-step="3" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 22h18"/><path d="M6 18v-7"/><path d="M10 18v-7"/><path d="M14 18v-7"/><path d="M18 18v-7"/><path d="m12 2 8 5H4Z"/></svg><span class="lbl">Revisar y generar</span><span class="cnt" id="cntErr"></span></button>
-  <button role="tab" data-step="4" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg><span class="lbl">Bitácora de nóminas</span><span class="cnt" id="cntBit"></span></button>
+  <button role="tab" data-step="6" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></svg><span class="lbl">Remuneraciones</span><span class="cnt" id="cntAbonos"></span></button>
+  <button role="tab" data-step="4" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg><span class="lbl">Bitácora</span><span class="cnt" id="cntBit"></span></button>
   <button class="ayuda" id="btnGuia" type="button" title="Guía paso a paso del panel"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg><span class="lbl">Cómo se usa</span></button>
 </nav>
 
@@ -263,6 +265,106 @@
   </div>
 </section>
 
+<!-- REMUNERACIONES Y ABONOS (planilla Solo Abonos DET, 7 columnas) -->
+<section class="panel" id="p6">
+  <div class="pagehead">
+    <div><h1 class="titulo">Nómina de <em>remuneraciones</em></h1><p>Viáticos, fondos fijos y cajas chicas, honorarios y remuneraciones de personas naturales. Planilla BancoEstado “Pago Solo Abonos DET” de 7 columnas, una nómina por fuente.</p></div>
+    <div class="estado vivo"><b data-estado="t"></b><span data-estado="s"></span></div>
+  </div>
+  <ul class="issues" id="abReglas" hidden><li class="error"><b>Falta publicar las reglas nuevas:</b> Firestore todavía no permite leer ni guardar abonos (colección pago_abonos). Pega en Firebase el archivo de reglas actualizado y recarga.</li></ul>
+
+  <div class="card">
+    <h2>Cargar abonos</h2>
+    <p class="sub">Importa la planilla del banco ya completa (hoja DETALLE) o pega filas copiadas desde Excel. Los nombres se pasan a mayúsculas sin tildes, y las formas sin cuenta (vale vista o pago cash) van con cuenta 0.</p>
+    <div class="fmt">RUT ⇥ Nombre ⇥ Email ⇥ Banco ⇥ Forma de pago ⇥ N° cuenta ⇥ Monto ⇥ Fuente (opcional) ⇥ Glosa (opcional)</div>
+    <div class="grid" style="margin-top:12px">
+      <label>Concepto de esta carga<select id="abConcepto"></select></label>
+      <label>Filas sin fuente van a<select id="abDefFuente"></select></label>
+    </div>
+    <textarea id="abPegar" placeholder="111111111	JUAN PEREZ SOTO		012	30	11111111	150000	SEP	Fondo fijo Escuela" style="margin-top:12px"></textarea>
+    <div class="row">
+      <button class="btn primary" id="abBtnPegar">Agregar filas pegadas</button>
+      <span class="btn file">Importar planilla (.xlsx, .xls, .csv)<input type="file" id="abArchivo" accept=".xls,.xlsx,.csv,.txt"></span>
+      <button class="btn" id="abBtnPlantilla">Descargar planilla BancoEstado 7 columnas</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Agregar un abono</h2>
+    <p class="sub">Al escribir el RUT se completan los datos del último pago a esa persona.</p>
+    <div class="grid">
+      <label>RUT<input id="abRut" autocomplete="off" placeholder="12345678-5"></label>
+      <label class="wide">Nombre<input id="abNombre" autocomplete="off"></label>
+      <label>Email (opcional)<input id="abEmail" type="email"></label>
+      <label class="wide">Banco<select id="abBanco"></select></label>
+      <label class="wide">Forma de pago<select id="abForma"></select></label>
+      <label>N° de cuenta<input id="abCuenta" autocomplete="off"></label>
+      <label>Monto<input id="abMonto" inputmode="numeric"></label>
+      <label>Fuente<select id="abFuente"></select></label>
+      <label>Concepto<select id="abConcepto1"></select></label>
+      <label class="wide">Glosa (opcional)<input id="abGlosa" placeholder="Ej. Fondo fijo Escuela Básica X"></label>
+    </div>
+    <div class="row"><button class="btn primary" id="abBtnAgregar">Agregar abono</button><span class="hint" id="abRutInfo"></span></div>
+  </div>
+
+  <div class="card">
+    <div class="row" style="margin-top:0;justify-content:space-between">
+      <h2 style="margin:0">Abonos por pagar</h2>
+      <button class="btn danger" id="abBtnVaciar">Vaciar todo</button>
+    </div>
+    <p class="sub" style="margin-top:4px">Solo los abonos marcados entran en la nómina. Los desmarcados quedan guardados para otro día.</p>
+    <div class="bar">
+      <label class="toggle" style="color:var(--muted)">Ver <select id="abFiltro"></select></label>
+      <button class="btn small" id="abSelTodos">Marcar todos</button>
+      <button class="btn small" id="abSelNinguno">Desmarcar todos</button>
+      <span class="sp"></span>
+      <label class="toggle" style="color:var(--muted)">Mover marcados a <select id="abMover"></select></label>
+      <button class="btn small" id="abBtnMover">Mover</button>
+      <button class="btn small danger" id="abBtnQuitar">Quitar marcados</button>
+    </div>
+    <p class="hint" id="abSelInfo" style="margin:8px 0 0"></p>
+    <div class="tablebox"><table>
+      <thead><tr><th class="c"><input type="checkbox" class="chk" id="abChkTodos" aria-label="Marcar visibles"></th><th>Fuente</th><th>Concepto</th><th>RUT</th><th>Nombre</th><th>Banco · forma · cuenta</th><th style="text-align:right">Monto</th><th>Glosa</th><th></th></tr></thead>
+      <tbody id="abTabla"></tbody>
+    </table></div>
+  </div>
+
+  <div class="card">
+    <h2>Nóminas por fuente</h2>
+    <p class="sub">Solo abonos marcados. Toca una fuente para revisarla y generar su archivo.</p>
+    <div class="tablebox" style="max-height:none"><table class="ftab">
+      <thead><tr><th>Fuente</th><th style="text-align:right">Pagos</th><th style="text-align:right">Abonos</th><th style="text-align:right">Total</th><th>Estado</th></tr></thead>
+      <tbody id="abFuentes"></tbody>
+    </table></div>
+    <h2 id="abTituloNomina" style="margin-top:18px">Nómina</h2>
+    <div class="kpis">
+      <div class="kpi hero"><span class="kpi-t">Total a transferir</span><b id="abTotal">$0</b><small>Suma de los abonos marcados de la fuente</small></div>
+      <div class="kpi"><span class="kpi-t">Pagos</span><b id="abPagos">0</b><small>líneas en el archivo</small></div>
+      <div class="kpi"><span class="kpi-t">Abonos</span><b id="abCant">0</b><small>abonos marcados</small></div>
+    </div>
+    <ul class="issues" id="abIssues"></ul>
+  </div>
+
+  <div class="card">
+    <h2>Archivo de carga</h2>
+    <div class="grid" style="margin-top:10px">
+      <label class="wide">Prefijo del archivo (el panel agrega _FUENTE al final)<input id="abPrefijo" autocomplete="off"></label>
+    </div>
+    <div class="row">
+      <label class="toggle"><input type="checkbox" id="abAgrupar"> Agrupar abonos del mismo RUT y cuenta en un solo pago</label>
+    </div>
+    <div class="row">
+      <button class="btn primary" id="abBtnGenerar">Generar nómina y registrar en bitácora</button>
+      <button class="btn" id="abBtnBorrador" title="No registra la nómina; sirve para revisión o visto bueno">Excel borrador</button>
+    </div>
+    <p class="hint" id="abArchivoInfo"></p>
+    <p class="hint">Al generar, la nómina recibe el número correlativo (el mismo de proveedores), se descargan el .txt y el Excel de 7 columnas, y sus abonos pasan a la bitácora.</p>
+    <div class="viewtabs" role="group" aria-label="Vista previa"><button id="abVerPl" aria-pressed="true">Planilla BancoEstado</button><button id="abVerTx" aria-pressed="false">Texto .txt</button></div>
+    <div class="be" id="abPrevPl"></div>
+    <div id="abPrevTx" hidden><div class="slip"><pre id="abPrevTxt"></pre></div><p class="hint">Cada ⇥ es una tabulación. Una línea por pago, con 7 campos.</p></div>
+  </div>
+</section>
+
 <!-- STEP 4 -->
 <section class="panel" id="p4">
   <div class="pagehead">
@@ -277,6 +379,7 @@
     <p class="sub" style="margin-top:4px">Cada nómina generada queda aquí con sus documentos. Márcala como cargada al subirla a BancoEstado y registra el resultado cuando el banco lo informe (desde las 14:00 del día de pago de la nómina).</p>
     <div class="stats" id="bitStats"></div>
     <div class="bar">
+      <label class="toggle" style="color:var(--muted)">Tipo <select id="hTipo"><option value="*">Todas</option><option value="proveedores">Proveedores</option><option value="abonos">Remuneraciones</option></select></label>
       <label class="toggle" style="color:var(--muted)">Fuente <select id="hFuente"></select></label>
       <input id="hSearch" placeholder="Buscar factura (N° doc), RUT, proveedor o DC" style="max-width:320px">
       <span class="sp"></span>

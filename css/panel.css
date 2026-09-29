@@ -95,7 +95,7 @@ body{margin:0;background:var(--paper);background-image:linear-gradient(180deg,va
 /* ---------- pestañas flotantes ---------- */
 .steps{position:sticky;top:8px;z-index:20;display:flex;gap:4px;margin:0 0 22px;padding:6px;background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);overflow-x:auto;scrollbar-width:none}
 .steps::-webkit-scrollbar{display:none}
-.steps button{flex:1 0 auto;display:flex;align-items:center;justify-content:center;gap:9px;padding:10px 14px;border:0;border-radius:12px;background:transparent;color:var(--muted-2);font:inherit;font-size:14.5px;font-weight:700;cursor:pointer;white-space:nowrap}
+.steps button{flex:1 0 auto;display:flex;align-items:center;justify-content:center;gap:8px;padding:10px 10px;border:0;border-radius:12px;background:transparent;color:var(--muted-2);font:inherit;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap}
 .steps button:hover{background:var(--paper)}
 .steps button .ic{width:20px;height:20px}
 .steps button[aria-selected="true"]{background:var(--nav-active);color:var(--ink-strong)}
@@ -293,7 +293,7 @@ td input.inl{padding:4px 8px;font-size:13px;width:190px;background:var(--surface
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
 /* ---------- guía "Cómo se usa" ---------- */
-.steps .ayuda{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:10px 14px;border:1px solid var(--line-2);border-radius:12px;background:var(--surface-2);color:var(--accent-soft-ink);font:inherit;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap}
+.steps .ayuda{flex:0 0 auto;display:flex;align-items:center;gap:7px;padding:9px 12px;border:1px solid var(--line-2);border-radius:12px;background:var(--surface-2);color:var(--accent-soft-ink);font:inherit;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap}
 .steps .ayuda:hover{border-color:var(--accent)}
 .guia{width:min(920px,calc(100vw - 32px));max-height:calc(100vh - 48px);padding:0;border:1px solid var(--line);border-radius:18px;background:var(--surface);color:var(--ink);box-shadow:0 24px 60px rgba(0,0,0,.25)}
 .guia::backdrop{background:rgba(11,21,34,.55)}
@@ -331,3 +331,4 @@ td input.inl{padding:4px 8px;font-size:13px;width:190px;background:var(--surface
 .gen-archivos .btn span{display:flex;flex-direction:column;gap:3px;min-width:0}
 .gen-archivos small{font-weight:400;font-size:12px;opacity:.9;overflow-wrap:anywhere}
 @media (max-width:640px){.gen-archivos{grid-template-columns:1fr}}
+@media (max-width:640px){.steps{grid-template-columns:repeat(3,1fr)}}

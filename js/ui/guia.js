@@ -14,7 +14,8 @@ const SECCIONES = [
       <li><b>Subir al banco.</b> Sube el .txt en el portal de BancoEstado. Luego, en la Bitácora, pulsa <b>Marcar como cargada</b> con la fecha de carga y la fecha de pago.</li>
       <li><b>Resultado.</b> Desde las 14:00 del día de pago, registra el resultado: <b>Pagado</b> o <b>Rechazado</b> con su motivo.</li>
       <li><b>Rechazos.</b> Corrige los datos bancarios del proveedor y pulsa <b>Volver a pendientes</b>: sus documentos se pagan en otra nómina.</li>
-    </ol>`
+    </ol>
+    <p>Para <b>remuneraciones, viáticos, fondos fijos u honorarios</b> de personas naturales, usa la pestaña <b>Remuneraciones</b>: reemplaza los pasos 1 a 3 con la planilla de 7 columnas, y luego sigue igual en la Bitácora.</p>`
   },
   {
     id: "p1", titulo: "1. Proveedores", html: `
@@ -50,6 +51,18 @@ const SECCIONES = [
     </ul>`
   },
   {
+    id: "p6", titulo: "Remuneraciones y abonos", html: `
+    <p>Para pagos a <b>personas naturales</b> que no llevan documentos: viáticos, fondos fijos y cajas chicas, honorarios y remuneraciones. Usa la planilla BancoEstado <b>“Pago Solo Abonos DET” de 7 columnas</b>: RUT, nombre, email, banco, forma de pago, N° de cuenta y monto. Se hace una nómina por fuente de financiamiento.</p>
+    <ul>
+      <li><b>Cargar:</b> importa la planilla del banco ya completa (hoja DETALLE), o pega filas copiadas desde Excel. Elige el <b>concepto</b> de la carga. Si el nombre del archivo lo dice, se deduce solo (por ejemplo, “REPOSICION FONDOS FIJOS” queda como Fondos fijos) y también la fuente (<code>…_SEP.xlsx</code>).</li>
+      <li>Los nombres se pasan solos a <b>mayúsculas sin tildes ni ñ</b>, como exige el banco. En las formas de pago sin cuenta (vale vista o pago cash: 20, 23, 28 y 29) la cuenta va en <b>0</b>. En CuentaRUT (30), la cuenta es el RUT sin dígito verificador.</li>
+      <li><b>Agregar uno a mano:</b> al escribir el RUT se completan los datos del último pago a esa persona.</li>
+      <li><b>Controles:</b> el panel avisa si los datos bancarios de una persona <b>cambiaron</b> respecto de su último pago, si un RUT y monto se repiten en la nómina, y si ya hay un pago igual en otra nómina que aún no tiene resultado.</li>
+      <li><b>Generar:</b> usa el mismo número correlativo que proveedores y descarga el .txt y el Excel de 7 columnas. El archivo se llama <code>AAAAMMDD_CONCEPTO_FUENTE</code>, por ejemplo <code>20260917_FONDOS_FIJOS_SEP.txt</code>.</li>
+      <li>Después sigue igual que proveedores en la <b>Bitácora</b>: marcar como cargada, fecha de pago, resultado, rechazos y volver a pendientes. Los abonos rechazados vuelven a esta pestaña.</li>
+    </ul>`
+  },
+  {
     id: "p4", titulo: "4. Bitácora de nóminas", html: `
     <ul>
       <li>Los <b>contadores</b> de arriba filtran la tabla: generadas sin cargar, esperando resultado, por registrar resultado y con rechazos por reintegrar.</li>
@@ -80,6 +93,7 @@ const SECCIONES = [
       <dt>“Este documento ya está en la nómina N° X”</dt><dd>Ese documento ya se envió al banco. Quítalo de pendientes o, si esa nómina no se cargó, anúlala.</dd>
       <dt>El total de un proveedor queda en cero o negativo</dt><dd>Hay una nota de crédito mayor que sus facturas. Revisa los documentos marcados de ese proveedor.</dd>
       <dt>No veo un cambio que hizo otra persona</dt><dd>Los cambios llegan solos en segundos. Si no aparecen, recarga la página.</dd>
+      <dt>“Falta publicar las reglas nuevas” en Remuneraciones</dt><dd>Firestore todavía no tiene las reglas de la colección de abonos. Un administrador debe pegar el archivo de reglas actualizado en Firebase.</dd>
       <dt>¿Quién puede entrar?</dt><dd>Solo los correos de la lista de acceso del equipo de Finanzas. Para sumar a alguien, pídeselo a un administrador.</dd>
     </dl>`
   },
@@ -96,7 +110,7 @@ export function init() {
   $("btnGuia").onclick = () => {
     dlg.showModal();
     // Abre en el paso en que se está; el flujo general queda al principio.
-    ir(["1", "2", "3", "4", "5"].includes(prefs.step) ? "p" + prefs.step : "flujo", false);
+    ir(["1", "2", "3", "4", "5", "6"].includes(prefs.step) ? "p" + prefs.step : "flujo", false);
   };
   $("guiaCerrar").onclick = () => dlg.close();
   dlg.addEventListener("click", e => { if (e.target === dlg) dlg.close() }); // clic fuera de la guía

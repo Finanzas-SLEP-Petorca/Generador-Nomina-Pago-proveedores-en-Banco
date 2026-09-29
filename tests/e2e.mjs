@@ -240,6 +240,59 @@ try {
   await U.click('.steps button[data-step="1"]'); await U.click(`#tbProv tr[data-rut="${R[0]}"]`);
   assert.equal(await U.isDisabled("#fRut"), true); assert.equal(await U.isVisible("#btnDelProv"), false);
 
+  // ---------- remuneraciones y abonos (planilla de 7 columnas) ----------
+  {
+    const { createRequire } = await import("node:module");
+    const XLSX = createRequire(import.meta.url)(REPO + "/vendor/xlsx-0.18.5.full.min.js");
+    const P = ["33333333", "44444444", "55555555"].map(b => b + dv(b));
+    const hoja = XLSX.utils.aoa_to_sheet([["", "", "Pago"], ["", "", "(7 Columnas)"], ["RUT", "NOMBRES Y APELLIDOS O RAZÓN SOCIAL", "EMAIL", "BANCO", "FORMA DE PAGO", "Nº DE CUENTA", "MONTO DEL PAGO"],
+      [P[0], "Víctor Núñez Pérez", "FINANZAS@SLEPPETORCA.GOB.CL", "012", "29", "", 150000], [P[1], "maría josé soto", "", "012", "30", "", 46290], [P[2], "PEDRO ROJAS", "", "001", "01", "987654", 27540]]);
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, hoja, "DETALLE");
+    const ruta = AQUI + "20260930 - REPOSICION FONDOS FIJOS EE.xlsx";
+    writeFileSync(ruta, XLSX.write(wb, { type: "buffer", bookType: "xlsx" }));
+    await A.click('.steps button[data-step="6"]');
+    await A.setInputFiles("#abArchivo", ruta);
+    await esperar(A, () => document.querySelectorAll("#abTabla tr .chk").length === 3);
+    const tabla = await A.textContent("#abTabla");
+    assert.match(tabla, /VICTOR NUNEZ PEREZ/); assert.match(tabla, /MARIA JOSE SOTO/); assert.match(tabla, /FONDOS FIJOS/);
+    log("remuneraciones: importa la planilla de 7 columnas, corrige nombres y deduce el concepto:", (await toastTxt(A)).slice(0, 140));
+    await A.fill("#abPegar", [P[2], "PEDRO ROJAS", "", "001", "01", "987654", "5000", "PIE", "Viatico octubre"].join("\t")); await A.click("#abBtnPegar");
+    await esperar(A, () => document.querySelectorAll("#abTabla tr .chk").length === 4);
+    await A.click('#abFuentes tr[data-abf="GENERAL"]');
+    await esperar(A, () => !document.getElementById("abBtnGenerar").disabled);
+    assert.equal(await A.textContent("#abTotal"), "$234.019");
+    const [abTxt, abXl] = await descargas(A, 2, () => A.click("#abBtnGenerar"));
+    const hoyA = new Date(); const pref = hoyA.getFullYear() + String(hoyA.getMonth() + 1).padStart(2, "0") + String(hoyA.getDate()).padStart(2, "0");
+    assert.equal(abTxt.nombre, pref + "_FONDOS_FIJOS_GENERAL.txt"); assert.equal(abXl.nombre, pref + "_FONDOS_FIJOS_GENERAL.xlsx");
+    assert.equal(abTxt.bytes.toString("utf8"), [[P[0], "VICTOR NUNEZ PEREZ", "FINANZAS@SLEPPETORCA.GOB.CL", "012", "29", "0", "150000"], [P[1], "MARIA JOSE SOTO", "finanzas@sleppetorca.gob.cl", "012", "30", P[1].slice(0, -1), "46290"], [P[2], "PEDRO ROJAS", "finanzas@sleppetorca.gob.cl", "001", "01", "987654", "27540"]].map(f => f.join("\t")).join("\r\n") + "\r\n");
+    const leido = XLSX.read(abXl.bytes, { type: "buffer" });
+    assert.equal(leido.SheetNames[0], "DETALLE"); assert.equal(leido.Sheets.DETALLE.B4.v, "VICTOR NUNEZ PEREZ"); assert.equal(leido.Sheets.DETALLE.F4.v, "0");
+    await esperar(A, () => document.getElementById("dlgGenerada").open); await A.click("#genCerrar");
+    const nAb = await A.$eval("#hDetail h2", h => h.textContent);
+    assert.match(nAb, /remuneraciones \(fondos fijos\)/);
+    log("remuneraciones: genera", abTxt.nombre, "y", abXl.nombre, "(7 campos por línea, cuenta 0 y CuentaRUT)");
+    // Bitácora: filtro por tipo, carga, rechazo y vuelta a pendientes.
+    await A.selectOption("#hTipo", "abonos");
+    const filas = await A.$$eval("#tbBit tr[data-id]", t => t.length); assert.equal(filas, 1);
+    await A.click("#nCargar");
+    await esperar(A, () => document.querySelector("#hDetail .tag")?.textContent.includes("Cargada"));
+    await A.selectOption('#hDetail [data-pe="2"]', "rechazado");
+    await esperar(A, () => document.querySelector('#hDetail [data-pr="2"]'));
+    await A.click('#hDetail [data-pr="2"]');
+    await esperar(A, () => document.getElementById("cntAbonos").textContent === "2/2");
+    await A.selectOption("#hTipo", "*");
+    await A.click('.steps button[data-step="6"]');
+    assert.match(await A.textContent("#abTabla"), /Rechazado en nómina N° \d+/);
+    // Alta manual: el RUT ya pagado autocompleta sus datos.
+    await A.fill("#abRut", P[0]); await A.dispatchEvent("#abRut", "change");
+    assert.equal(await A.inputValue("#abNombre"), "VICTOR NUNEZ PEREZ"); assert.equal(await A.inputValue("#abForma"), "29");
+    log("remuneraciones: rechazo vuelve a la pestaña, filtro por tipo en la bitácora y autocompletar desde el último pago");
+    assert.match(await A.textContent("#p6 [data-estado=s]"), /abonos? marcados?/);
+    const navOk = await A.evaluate(() => { const n = document.querySelector(".steps"); return n.scrollWidth <= n.clientWidth + 1 });
+    assert.ok(navOk, "las pestañas no caben en 1280 px");
+    await A.screenshot({ path: AQUI + "remuneraciones.png", fullPage: true });
+  }
+
   // ---------- feriados ----------
   await A.click("#btnConfig");
   await A.fill("#cFeriado", "18/09/2026, 2026-09-19"); await A.click("#btnAddFeriado");
