@@ -3,7 +3,7 @@
 // contra el panel de referencia (tests/formato.test.mjs).
 // La lógica es la misma de referencia/panel_actual_claude.html.
 
-import { M_BANCO, M_FORMA, M_SECTOR, M_TIPO, NC, DIAS } from "./catalogos.js";
+import { M_BANCO, M_FORMA, M_SECTOR, M_TIPO, NC, DIAS, M_FORMA_ABONO, FORMAS_SIN_CUENTA, FORMAS_SOLO_BE } from "./catalogos.js";
 
 // ---------- normalizadores ----------
 export const S = v => v == null ? "" : String(v).trim();
@@ -118,7 +118,7 @@ export function checkDoc(d) {
 // Clave rut|tipo|ndoc → "N" o "N (pagado)".
 export function activeIndex(nominas) {
   const m = {};
-  nominas.forEach(n => { if (n.estado === "anulada") return; n.pagos.forEach(p => { if (p.estado === "rechazado") return; p.docs.forEach(d => { m[p.rut + "|" + d.tipo + "|" + d.ndoc] = n.num + (p.estado === "pagado" ? " (pagado)" : "") }) }) });
+  nominas.forEach(n => { if (n.estado === "anulada" || n.tipo === "abonos") return; n.pagos.forEach(p => { if (p.estado === "rechazado") return; p.docs.forEach(d => { m[p.rut + "|" + d.tipo + "|" + d.ndoc] = n.num + (p.estado === "pagado" ? " (pagado)" : "") }) }) });
   return m;
 }
 
@@ -201,4 +201,95 @@ export function nomStatus(n, feriados = [], ahora = Date.now()) {
   const sinR = rech.filter(p => !p.reint).length;
   if (rech.length) return { k: sinR ? "reintegrar" : "ok", t: `Procesada, ${rech.length} rechazo${rech.length > 1 ? "s" : ""}` + (sinR ? `, ${sinR} por reintegrar` : ""), c: sinR ? "wrn" : "okk" };
   return { k: "ok", t: "Procesada, todo pagado", c: "okk" };
+}
+
+// =====================================================================
+// Nómina de remuneraciones y abonos: planilla "Pago Solo Abonos DET"
+// (7 columnas): RUT, nombre, email, banco, forma de pago, cuenta, monto.
+// Una línea por pago, sin documentos ni sector.
+// =====================================================================
+
+// Valida y normaliza un abono según el instructivo de la planilla de 7 columnas.
+export function checkAbono(a, emailDefecto = "") {
+  const e = [], w = [];
+  const rut = normRut(a.rut);
+  if (!rut) e.push("falta RUT"); else if (!rutOk(rut)) e.push("RUT " + rut + " con dígito verificador inválido");
+  if (rut.length > 10) e.push("RUT supera 10 caracteres");
+  const nombre = cleanName(a.nombre);
+  if (!nombre) e.push("falta nombre");
+  if (nombre.length > 60) e.push("nombre supera 60 caracteres");
+  if (/\d/.test(nombre)) w.push("el nombre contiene números; el instructivo del banco pide solo letras");
+  const email = S(a.email) || S(emailDefecto);
+  if (email && (email.length > 40 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))) e.push("email inválido o de más de 40 caracteres");
+  const banco = pad(a.banco, 3);
+  if (!M_BANCO[banco]) e.push("código de banco " + (banco || "vacío") + " no está en la tabla");
+  const forma = pad(a.forma, 2);
+  if (!M_FORMA_ABONO[forma]) e.push("forma de pago " + (forma || "vacía") + " no válida");
+  if (FORMAS_SOLO_BE.has(forma) && banco !== "012") e.push("la forma de pago " + forma + " solo sirve con BancoEstado (012)");
+  // Vale vista / pago cash: la cuenta va en 0. CuentaRUT: el RUT sin dígito verificador.
+  let cuenta = normCuenta(a.cuenta);
+  if (FORMAS_SIN_CUENTA.has(forma)) { if (cuenta && !/^0+$/.test(cuenta)) w.push("la forma " + forma + " no usa cuenta; se informa 0"); cuenta = "0" }
+  if (forma === "30" && rut) { const cr = rut.slice(0, -1); if (!cuenta) cuenta = cr; else if (cuenta !== cr) w.push("en CuentaRUT la cuenta debe ser el RUT sin dígito verificador (" + cr + ")") }
+  if (!cuenta) e.push("falta número de cuenta");
+  if (cuenta.length > 17) e.push("número de cuenta supera 17 dígitos");
+  const monto = a.monto;
+  if (!(Number.isInteger(monto) && monto > 0)) e.push("monto debe ser un entero mayor a cero");
+  else if (String(monto).length > 13) e.push("monto supera 13 dígitos");
+  return { e, w, out: { rut, nombre, email, banco, forma, cuenta, monto } };
+}
+
+// Último pago no rechazado a un RUT en nóminas de abonos (para autocompletar
+// y avisar si la cuenta cambió: control contra fraude).
+export function ultimoAbono(nominas, rut) {
+  let ult = null;
+  nominas.forEach(n => { if (n.tipo !== "abonos" || n.estado === "anulada") return; n.pagos.forEach(p => { if (p.rut === rut && p.estado !== "rechazado" && (!ult || n.num > ult.num)) ult = { num: n.num, p } }) });
+  return ult;
+}
+
+// Arma la nómina de abonos de una fuente. ctx = { abonos, nominas, group, email }
+export function buildAbonos(fuente, ctx) {
+  const { abonos, nominas, group = false, email = "" } = ctx;
+  const issues = [], groups = new Map(); let seq = 0;
+  const list = abonos.filter(a => a.sel && a.fuente === fuente);
+  const ids = list.map(a => a.id), vistos = new Map();
+  // Pagos aún sin resultado en otras nóminas de abonos: rut|monto → N°
+  const enCurso = {};
+  nominas.forEach(n => { if (n.tipo !== "abonos" || n.estado === "anulada") return; n.pagos.forEach(p => { if (p.estado === "pendiente") enCurso[p.rut + "|" + p.monto] = n.num }) });
+  list.forEach(a => {
+    const c = checkAbono(a, email);
+    const where = `${fmtRut(c.out.rut) || "sin RUT"} ${c.out.nombre}`.trim();
+    c.e.forEach(m => issues.push({ lvl: "error", where, msg: m }));
+    c.w.forEach(m => issues.push({ lvl: "warn", where, msg: m }));
+    const k = c.out.rut + "|" + c.out.monto;
+    if (vistos.has(k)) issues.push({ lvl: "warn", where, msg: "mismo RUT y monto aparece más de una vez en esta nómina; revisa que no sea un duplicado" });
+    vistos.set(k, true);
+    if (enCurso[k]) issues.push({ lvl: "warn", where, msg: `ya hay un pago a este RUT por el mismo monto en la nómina N° ${enCurso[k]}, aún sin resultado; revisa que no sea un pago repetido` });
+    const ult = ultimoAbono(nominas, c.out.rut);
+    if (ult && (ult.p.banco !== c.out.banco || ult.p.cuenta !== c.out.cuenta || (ult.p.forma && ult.p.forma !== c.out.forma)))
+      issues.push({ lvl: "warn", where, msg: `los datos bancarios cambiaron respecto del último pago (N° ${ult.num}: banco ${ult.p.banco}, forma ${ult.p.forma || "?"}, cuenta ${ult.p.cuenta}). Confirma el cambio antes de pagar.` });
+    const key = group ? c.out.rut + "|" + c.out.banco + "|" + c.out.forma + "|" + c.out.cuenta : "#" + (seq++);
+    if (!groups.has(key)) groups.set(key, { p: { ...c.out, monto: 0 }, docs: [] });
+    const g = groups.get(key);
+    g.docs.push({ id: a.id, monto: c.out.monto, concepto: S(a.concepto), glosa: S(a.glosa) });
+  });
+  let total = 0; const lines = [];
+  for (const g of groups.values()) {
+    const sum = g.docs.reduce((t, d) => t + (Number.isInteger(d.monto) ? d.monto : 0), 0);
+    if (String(sum).length > 13) issues.push({ lvl: "error", where: fmtRut(g.p.rut), msg: "el monto del pago supera 13 dígitos" });
+    g.sum = sum; g.p.monto = sum; total += sum;
+    lines.push({ tipo: 7, f: [g.p.rut, g.p.nombre, g.p.email, g.p.banco, g.p.forma, g.p.cuenta, String(sum)] });
+  }
+  const errs = issues.filter(i => i.lvl === "error").length, warns = issues.length - errs;
+  return { fuente, issues, lines, total, nBen: groups.size, nDocs: list.length, errs, warns, ids, groups: [...groups.values()] };
+}
+
+// Concepto sugerido a partir del nombre del archivo importado.
+export function conceptoDeNombre(nombre) {
+  const t = cleanName(S(nombre).replace(/[_\-.]/g, " "));
+  if (/FONDO/.test(t)) return "FONDOS FIJOS";
+  if (/CAJA CHICA/.test(t)) return "CAJA CHICA";
+  if (/HONORARIO/.test(t)) return "HONORARIOS";
+  if (/VIATICO/.test(t)) return "VIATICOS";
+  if (/REMUNERA|SUELDO/.test(t)) return "REMUNERACIONES";
+  return "";
 }

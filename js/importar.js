@@ -2,7 +2,7 @@
 // .xls/.xlsx/.csv/.txt y reconocer una planilla de pago anterior del banco.
 // Misma lógica que el panel de referencia, más la columna DC opcional.
 
-import { S, normRut, rutOk, parseFecha, cleanName, normFuente, pad, normCuenta, parseMonto, normDc } from "./formato.js";
+import { S, normRut, rutOk, parseFecha, cleanName, normFuente, pad, normCuenta, parseMonto, normDc, conceptoDeNombre } from "./formato.js";
 
 const RX = {
   fuente: /fuente|financiamiento|subvenci|programa|centro de costo/, rut: /^rut|rut (del )?(proveedor|beneficiario)/, nombre: /raz|nombre|beneficiario|proveedor/, email: /mail|correo/,
@@ -139,4 +139,76 @@ export async function readFile(file, fuentes) {
     return all;
   }
   return ingest(rows, hint);
+}
+
+// =====================================================================
+// Remuneraciones y abonos (planilla Solo Abonos DET, 7 columnas)
+// Columnas: RUT ⇥ Nombre ⇥ Email ⇥ Banco ⇥ Forma ⇥ N° cuenta ⇥ Monto,
+// y opcionales ⇥ Fuente ⇥ Glosa. Acepta la hoja DETALLE del banco
+// (encabezado en la fila 3) o filas pegadas, con o sin encabezado.
+// =====================================================================
+const RXA = {
+  rut: /^rut/, nombre: /nombre|raz|beneficiario/, email: /mail|correo/, banco: /banco/,
+  forma: /forma|medio/, cuenta: /cuenta/, monto: /monto|importe|total/, fuente: /fuente|financiamiento|subvenci|programa/, glosa: /glosa|detalle|concepto|observ|motivo/
+};
+const ORDERA = ["rut", "email", "forma", "cuenta", "monto", "fuente", "banco", "glosa", "nombre"];
+function headerMapAbonos(row) {
+  const map = {};
+  row.forEach((c, i) => {
+    const h = S(c).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""); if (!h) return;
+    for (const k of ORDERA) { if (!(k in map) && RXA[k].test(h)) { map[k] = i; break } }
+  });
+  return map;
+}
+export function ingestAbonos(rows) {
+  rows = rows.filter(r => r && r.some(c => S(c) !== ""));
+  let map = null, start = 0;
+  for (let i = 0; i < Math.min(rows.length, 10); i++) {
+    const m = headerMapAbonos(rows[i]);
+    if ("rut" in m && "monto" in m && !rutOk(normRut(rows[i][m.rut]))) { map = m; start = i + 1; break }
+  }
+  if (!map) map = { rut: 0, nombre: 1, email: 2, banco: 3, forma: 4, cuenta: 5, monto: 6, fuente: 7, glosa: 8 };
+  const out = [];
+  rows.slice(start).forEach(r => {
+    const g = k => k in map ? r[map[k]] : "";
+    if (!S(g("rut")) || /^rut$/i.test(S(g("rut")))) return;
+    out.push({ rut: g("rut"), nombre: g("nombre"), email: g("email"), banco: g("banco"), forma: g("forma"), cuenta: g("cuenta"), monto: g("monto"), fuente: g("fuente"), glosa: g("glosa") });
+  });
+  return out;
+}
+
+// Normaliza lo ingerido. Rechaza (no guarda) los de monto inválido, como en
+// documentos: Firestore exige monto entero mayor que cero.
+export function prepararAbonos(filas, { fuentes, defFuente, concepto }) {
+  const abonos = [], rechazados = [], nuevasFuentes = [], byF = {};
+  const todas = [...fuentes];
+  let corregidos = 0;
+  filas.forEach(a => {
+    const f = normFuente(a.fuente) || defFuente;
+    const nombre = cleanName(a.nombre);
+    if (nombre && nombre !== S(a.nombre).replace(/\s+/g, " ")) corregidos++;
+    const o = { rut: normRut(a.rut), nombre, email: S(a.email), banco: pad(a.banco, 3), forma: pad(a.forma, 2), cuenta: normCuenta(a.cuenta), monto: parseMonto(a.monto), fuente: f, concepto: S(concepto) || "REMUNERACIONES", sel: true };
+    const gl = S(a.glosa).replace(/\s+/g, " ").slice(0, 80); if (gl) o.glosa = gl;
+    if (!(Number.isInteger(o.monto) && o.monto > 0)) { rechazados.push({ ...o, montoOriginal: S(a.monto) }); return }
+    if (f && !todas.includes(f)) { todas.push(f); nuevasFuentes.push(f) }
+    byF[f] = (byF[f] || 0) + 1;
+    abonos.push(o);
+  });
+  return { abonos, rechazados, nuevasFuentes, fuentes: todas, byF, corregidos };
+}
+
+// Lee un archivo de abonos (.xlsx/.xls de la planilla del banco, .csv o .txt).
+export async function readAbonosFile(file, fuentes) {
+  const hint = fuenteFromName(file.name, fuentes), concepto = conceptoDeNombre(file.name);
+  const buf = await file.arrayBuffer();
+  let filas;
+  if (/\.(csv|txt)$/i.test(file.name)) filas = ingestAbonos(parseDelimitado(decodificar(buf)));
+  else {
+    if (typeof XLSX === "undefined") throw new Error("no se pudo cargar el lector de Excel. Pega las filas en su lugar");
+    const wb = XLSX.read(buf, { type: "array", cellDates: false });
+    const name = wb.SheetNames.find(n => /detalle/i.test(n)) || wb.SheetNames[0];
+    // raw:true: los números llegan completos (sin notación científica); los códigos se rellenan con ceros después.
+    filas = ingestAbonos(XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: true, defval: "" }));
+  }
+  return { filas, hint, concepto };
 }

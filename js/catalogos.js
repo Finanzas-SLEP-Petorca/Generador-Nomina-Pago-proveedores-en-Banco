@@ -23,3 +23,21 @@ export const PREFIJO_DEFECTO = "AAAAMMDD_PAGO_PROVEEDORES";
 
 export const EST_PAGO = { pendiente: "Pendiente", pagado: "Pagado", rechazado: "Rechazado" };
 export const DIAS = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
+
+// ---------- Nómina de remuneraciones y abonos (planilla "Pago Solo Abonos DET", 7 columnas) ----------
+// Formas de pago de la planilla del banco (pestañas Forma de Pago y Ejemplo).
+// Las formas sin cuenta (vale vista / pago cash) van con N° de cuenta 0.
+export const FORMAS_ABONO = [
+  ["01", "Cuenta corriente / vista (BancoEstado y otros bancos)"],
+  ["02", "Cuenta de ahorro (solo BancoEstado)"],
+  ["20", "Vale vista / pago cash, cuenta 0 (solo BancoEstado)"],
+  ["22", "Chequera electrónica (solo BancoEstado)"],
+  ["23", "Vale vista / pago cash, cuenta 0 (solo BancoEstado)"],
+  ["28", "Vale vista / pago cash, cuenta 0 (solo BancoEstado)"],
+  ["29", "Vale vista / pago cash, cuenta 0 (solo BancoEstado)"],
+  ["30", "CuentaRUT (solo BancoEstado)"]
+];
+export const M_FORMA_ABONO = mapOf(FORMAS_ABONO);
+export const FORMAS_SIN_CUENTA = new Set(["20", "23", "28", "29"]);
+export const FORMAS_SOLO_BE = new Set(["02", "20", "22", "23", "28", "29", "30"]);
+export const CONCEPTOS = ["REMUNERACIONES", "HONORARIOS", "VIATICOS", "FONDOS FIJOS", "CAJA CHICA", "OTRO"];

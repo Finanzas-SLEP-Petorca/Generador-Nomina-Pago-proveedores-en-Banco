@@ -53,3 +53,28 @@ export function plantillaSimple() {
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([["RUT", "FECHA DOC", "MONTO", "N DOC", "TIPO DOC", "FUENTE", "DC"]]), "Documentos");
   return new Uint8Array(XLSX.write(wb, { bookType: "xlsx", type: "array" }));
 }
+
+// Excel "Pago Solo Abonos DET" (7 columnas) desde assets/plantilla_abonos_7col.xlsx.
+// La hoja DETALLE ya trae filas vacías con formato desde la 4: se reemplazan
+// las necesarias por filas con datos, con los mismos estilos de la plantilla
+// (A texto, B nombre, C email, D-E códigos centrados, F cuenta, G monto).
+export async function abonosWorkbook(lineas) {
+  const zip = await plantilla("assets/plantilla_abonos_7col.xlsx");
+  const path = "xl/worksheets/sheet1.xml";
+  let xml = await zip.file(path).async("string");
+  const str = (ref, s, v) => v === "" ? `<c r="${ref}" s="${s}"/>` : `<c r="${ref}" s="${s}" t="inlineStr"><is><t>${x(v)}</t></is></c>`;
+  const ultima = 3 + lineas.length;
+  xml = xml.replace(/<row r="(\d+)"([^>]*)>[\s\S]*?<\/row>/g, (fila, n, attrs) => {
+    const r = +n; if (r < 4 || r > ultima) return fila;
+    const f = lineas[r - 4].f;
+    return `<row r="${r}"${attrs}>` + str("A" + r, 8, f[0]) + str("B" + r, 7, f[1]) + str("C" + r, 1, f[2]) + str("D" + r, 74, f[3]) + str("E" + r, 74, f[4]) + str("F" + r, 1, f[5]) + `<c r="G${r}" s="44"><v>${x(f[6])}</v></c></row>`;
+  });
+  zip.file(path, xml);
+  return zip.generateAsync({ type: "uint8array", compression: "DEFLATE", mimeType: MIME_XLSX });
+}
+
+// Planilla vacía del banco para completar a mano (la misma de assets/).
+export async function plantillaAbonos() {
+  const zip = await plantilla("assets/plantilla_abonos_7col.xlsx");
+  return zip.generateAsync({ type: "uint8array", compression: "DEFLATE", mimeType: MIME_XLSX });
+}

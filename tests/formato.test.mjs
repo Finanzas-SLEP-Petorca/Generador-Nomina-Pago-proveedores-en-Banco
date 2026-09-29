@@ -199,6 +199,80 @@ ok("nombre de archivo", () => {
   assert.equal(F.nombreNomina({ archivo: "20260926_PAGO_PROVEEDORES_SEP", fuente: "SEP" }), "20260926_PAGO_PROVEEDORES_SEP");
 });
 
+// ---------- remuneraciones y abonos (7 columnas) ----------
+ok("abonos: validación de la planilla de 7 columnas", () => {
+  const base = { rut: "11.111.111-1", nombre: "Víctor Muñoz Pérez", email: "", banco: "12", forma: "29", cuenta: "", monto: 150000 };
+  let c = F.checkAbono(base, "finanzas@sleppetorca.gob.cl");
+  assert.deepEqual(c.e, []); assert.equal(c.out.nombre, "VICTOR MUNOZ PEREZ"); assert.equal(c.out.cuenta, "0"); assert.equal(c.out.banco, "012");
+  assert.equal(c.out.email, "finanzas@sleppetorca.gob.cl");
+  c = F.checkAbono({ ...base, forma: "30", cuenta: "" }); assert.equal(c.out.cuenta, "11111111");
+  c = F.checkAbono({ ...base, forma: "30", cuenta: "123" }); assert.match(c.w.join(), /CuentaRUT/);
+  c = F.checkAbono({ ...base, forma: "29", banco: "001" }); assert.match(c.e.join(), /solo sirve con BancoEstado/);
+  c = F.checkAbono({ ...base, forma: "01", banco: "001", cuenta: "" }); assert.match(c.e.join(), /falta número de cuenta/);
+  c = F.checkAbono({ ...base, forma: "05" }); assert.match(c.e.join(), /forma de pago 05 no válida/);
+  c = F.checkAbono({ ...base, monto: 0 }); assert.match(c.e.join(), /monto/);
+  c = F.checkAbono({ ...base, rut: "11111111-2" }); assert.match(c.e.join(), /dígito verificador/);
+});
+
+ok("abonos: nómina, .txt de 7 columnas y avisos", () => {
+  const ab = [
+    { id: "a", rut: "111111111", nombre: "UNO", email: "", banco: "012", forma: "29", cuenta: "0", monto: 1000, fuente: "SEP", sel: true, concepto: "FONDOS FIJOS" },
+    { id: "b", rut: "123456785", nombre: "DOS", email: "d@x.cl", banco: "001", forma: "01", cuenta: "555", monto: 2000, fuente: "SEP", sel: true, concepto: "VIATICOS" },
+    { id: "c", rut: "111111111", nombre: "UNO", email: "", banco: "012", forma: "29", cuenta: "0", monto: 1000, fuente: "SEP", sel: true, concepto: "FONDOS FIJOS" },
+    { id: "d", rut: "123456785", nombre: "DOS", email: "", banco: "001", forma: "01", cuenta: "555", monto: 9, fuente: "PIE", sel: true },
+    { id: "e", rut: "123456785", nombre: "DOS", email: "", banco: "001", forma: "01", cuenta: "555", monto: 9, fuente: "SEP", sel: false },
+  ];
+  const nominas = [{ num: 4, tipo: "abonos", estado: "cargada", pagos: [{ rut: "123456785", banco: "001", forma: "01", cuenta: "999", monto: 2000, estado: "pendiente" }] }];
+  const r = F.buildAbonos("SEP", { abonos: ab, nominas, group: false, email: "fin@x.cl" });
+  assert.equal(r.nBen, 3); assert.equal(r.total, 4000); assert.equal(r.errs, 0);
+  assert.equal(F.toTxt(r.lines), "111111111\tUNO\tfin@x.cl\t012\t29\t0\t1000\r\n123456785\tDOS\td@x.cl\t001\t01\t555\t2000\r\n111111111\tUNO\tfin@x.cl\t012\t29\t0\t1000\r\n");
+  const msgs = r.issues.map(i => i.msg).join(" | ");
+  assert.match(msgs, /más de una vez/); assert.match(msgs, /nómina N° 4, aún sin resultado/); assert.match(msgs, /datos bancarios cambiaron/);
+  const g = F.buildAbonos("SEP", { abonos: ab, nominas: [], group: true });
+  assert.equal(g.nBen, 2); assert.equal(g.groups[0].docs.length, 2); assert.equal(g.lines[0].f[6], "2000");
+  // Las nóminas de abonos no cuentan como documentos pagados de proveedores.
+  assert.deepEqual(F.activeIndex(nominas), {});
+  assert.equal(F.conceptoDeNombre("20260917 - REPOSICION FONDOS FIJOS EE.xlsx"), "FONDOS FIJOS");
+  assert.equal(F.conceptoDeNombre("honorarios_sep.xlsx"), "HONORARIOS");
+});
+
+ok("abonos: importar la hoja DETALLE del banco y filas pegadas", () => {
+  const detalle = [["", "", "Pago", "", "", "", "Versión 1.1"], ["", "", "(7 Columnas)"], ["RUT", "NOMBRES Y APELLIDOS O RAZÓN SOCIAL", "EMAIL", "BANCO", "FORMA DE PAGO", "Nº DE CUENTA", "MONTO DEL PAGO"],
+    [111111111, "José Ñuñez", "FINANZAS@SLEPPETORCA.GOB.CL", "012", "29", "", 150000], ["12345678-5", "ANA", "", 1, 1, 12345678901, "$1.500"], ["", "", "", "", "", "", ""]];
+  const f = I.ingestAbonos(detalle);
+  assert.equal(f.length, 2);
+  const p = I.prepararAbonos(f, { fuentes: ["GENERAL"], defFuente: "GENERAL", concepto: "FONDOS FIJOS" });
+  assert.equal(p.abonos.length, 2); assert.equal(p.abonos[0].nombre, "JOSE NUNEZ"); assert.equal(p.abonos[1].banco, "001"); assert.equal(p.abonos[1].forma, "01");
+  assert.equal(p.abonos[1].cuenta, "12345678901"); assert.equal(p.abonos[1].monto, 1500); assert.equal(p.corregidos, 1);
+  const pegado = I.ingestAbonos(I.parsePaste("111111111\tUNO\t\t012\t30\t11111111\t5000\tSEP\tFondo fijo escuela"));
+  const q = I.prepararAbonos(pegado, { fuentes: ["GENERAL"], defFuente: "GENERAL", concepto: "" });
+  assert.equal(q.abonos[0].fuente, "SEP"); assert.equal(q.abonos[0].glosa, "Fondo fijo escuela"); assert.deepEqual(q.nuevasFuentes, ["SEP"]); assert.equal(q.abonos[0].concepto, "REMUNERACIONES");
+  const malo = I.prepararAbonos(I.ingestAbonos(I.parsePaste("111111111\tUNO\t\t012\t30\t1\tabc")), { fuentes: [], defFuente: "GENERAL" });
+  assert.equal(malo.abonos.length, 0); assert.equal(malo.rechazados.length, 1);
+});
+
+// Excel de 7 columnas: se arma desde la plantilla del banco y al reimportarlo da el mismo .txt.
+{
+  globalThis.XLSX = require(path.join(raiz, "vendor/xlsx-0.18.5.full.min.js"));
+  globalThis.JSZip = require(path.join(raiz, "vendor/jszip-3.10.1.min.js"));
+  globalThis.fetch = async p => ({ ok: true, arrayBuffer: async () => { const b = readFileSync(path.join(raiz, p)); return b.buffer.slice(b.byteOffset, b.byteOffset + b.length) } });
+  const E = await import(path.join(raiz, "js/excel.js"));
+  const ab = [["111111111", "UNO", "", "012", "29", "0", 1000], ["123456785", "DOS DOS", "d@x.cl", "001", "01", "00012345678901234", 25000], ["22222222" + F.dvOf("22222222"), "TRES", "", "012", "30", "22222222", 7]]
+    .map(([rut, nombre, email, banco, forma, cuenta, monto], i) => ({ id: "x" + i, rut, nombre, email, banco, forma, cuenta, monto, fuente: "SEP", sel: true }));
+  const r = F.buildAbonos("SEP", { abonos: ab, nominas: [] });
+  const bytes = await E.abonosWorkbook(r.lines);
+  const wb = XLSX.read(bytes, { type: "array" });
+  ok("abonos: Excel de 7 columnas desde la plantilla del banco", () => {
+    assert.deepEqual(wb.SheetNames, ["DETALLE", "Bancos", "Forma de Pago", "Instructivo", "Ejemplo", "pasos para txt"]);
+    const filas = I.ingestAbonos(XLSX.utils.sheet_to_json(wb.Sheets.DETALLE, { header: 1, raw: true, defval: "" }));
+    const p = I.prepararAbonos(filas, { fuentes: ["SEP"], defFuente: "SEP" });
+    const r2 = F.buildAbonos("SEP", { abonos: p.abonos.map((a, i) => ({ ...a, id: "y" + i })), nominas: [] });
+    assert.equal(F.toTxt(r2.lines), F.toTxt(r.lines));
+    assert.equal(wb.Sheets.DETALLE.F5.v, "00012345678901234"); // la cuenta va como texto, sin perder ceros
+    assert.equal(wb.Sheets.DETALLE.G4.t, "n");                  // el monto va como número
+  });
+}
+
 ok("index.html con las versiones de los archivos al día", () => {
   const { execFileSync } = require("node:child_process");
   execFileSync(process.execPath, [path.join(raiz, "tests/versionar.mjs"), "--revisar"], { stdio: "pipe" });
