@@ -5,13 +5,13 @@ import { BANCOS, FORMAS_ABONO, M_BANCO, M_FORMA_ABONO, CONCEPTOS } from "../cata
 import { S, normRut, rutOk, fmtRut, parseMonto, checkAbono, buildAbonos, ultimoAbono, toTxt, fileName, today, money } from "../formato.js";
 import { ingestAbonos, parsePaste, prepararAbonos, readAbonosFile } from "../importar.js";
 import { abonosWorkbook, plantillaAbonos } from "../excel.js";
-import { st, agregarAbonos, actualizarAbonos, quitarAbonos, generarNominaAbonos } from "../datos.js";
+import { st, agregarAbonos, editarAbono, actualizarAbonos, quitarAbonos, generarNominaAbonos } from "../datos.js";
 import { $, esc, fillSelect, fOpts, toast, accion, descargar, prefs, guardarPrefs, go, mensajeError } from "./comun.js";
 import { mostrarGenerada } from "./paso3.js";
 import { abrirNomina } from "./paso4.js";
 
 const LOGO = "assets/logo_bancoestado.png";
-let prefijoEditado = false, current = null;
+let prefijoEditado = false, current = null, editando = null;
 
 const visibles = () => prefs.abFilt && prefs.abFilt !== "*" ? st.abonos.filter(a => a.fuente === prefs.abFilt) : st.abonos;
 const conceptoOpts = sel => CONCEPTOS.map(c => `<option value="${c}"${c === sel ? " selected" : ""}>${c[0] + c.slice(1).toLowerCase()}</option>`).join("");
@@ -72,12 +72,22 @@ export function init() {
     $("abCuenta").value = fuente.cuenta || "";
     $("abRutInfo").textContent = "Datos " + fuente.de + ". Revísalos antes de agregar.";
   });
+  $("abBtnCancelar").onclick = () => formAbono(null);
   $("abBtnAgregar").onclick = () => {
     const a = { rut: $("abRut").value, nombre: $("abNombre").value, email: $("abEmail").value, banco: $("abBanco").value, forma: $("abForma").value, cuenta: $("abCuenta").value, monto: parseMonto($("abMonto").value), fuente: $("abFuente").value, glosa: $("abGlosa").value };
     const c = checkAbono(a, st.config.emailDefecto);
     if (c.e.length) { toast("No se agregó: " + c.e[0]); return }
     const o = { ...c.out, email: S(a.email), fuente: a.fuente, concepto: $("abConcepto1").value, sel: true };
     if (S(a.glosa)) o.glosa = S(a.glosa).slice(0, 80);
+    if (editando) {
+      const id = editando;
+      accion($("abBtnAgregar"), async () => {
+        const r = await editarAbono(id, { ...o, glosa: o.glosa || "" });
+        formAbono(null);
+        toast((r === "sin cambios" ? "Sin cambios" : "Abono actualizado") + (c.w.length ? ". Ojo: " + c.w[0] : ""));
+      });
+      return;
+    }
     accion($("abBtnAgregar"), async () => {
       await agregarAbonos({ abonos: [o], nuevasFuentes: [], fuentes: st.config.fuentes, byF: { [o.fuente]: 1 } }, "alta manual");
       ["abRut", "abNombre", "abEmail", "abCuenta", "abMonto", "abGlosa"].forEach(id => $(id).value = ""); $("abRutInfo").textContent = ""; $("abRut").focus();
@@ -124,6 +134,22 @@ export function init() {
   };
 }
 
+// Carga un abono en el formulario para editarlo (null vuelve al modo agregar).
+function formAbono(a) {
+  editando = a ? a.id : null;
+  const v = (id, x) => { $(id).value = x == null ? "" : x };
+  v("abRut", a && a.rut); v("abNombre", a && a.nombre); v("abEmail", a && a.email); v("abCuenta", a && a.cuenta);
+  v("abMonto", a && a.monto); v("abGlosa", a && a.glosa);
+  $("abBanco").value = a && M_BANCO[a.banco] ? a.banco : "012";
+  $("abForma").value = a && M_FORMA_ABONO[a.forma] ? a.forma : "01";
+  if (a) { $("abFuente").value = a.fuente; if (a.concepto) $("abConcepto1").value = a.concepto }
+  $("abFormTitulo").textContent = a ? `Editar abono de ${fmtRut(a.rut)}` : "Agregar un abono";
+  $("abBtnAgregar").textContent = a ? "Guardar cambios" : "Agregar abono";
+  $("abBtnCancelar").hidden = !a;
+  $("abRutInfo").textContent = a ? "Si cambias banco, forma o cuenta, el cambio queda en el historial con el antes y el después." : "";
+  if (a) { $("abFormTitulo").scrollIntoView({ behavior: "smooth", block: "start" }); $("abMonto").focus({ preventScroll: true }) }
+}
+
 function vista(pl) { $("abVerPl").setAttribute("aria-pressed", pl); $("abVerTx").setAttribute("aria-pressed", !pl); $("abPrevPl").hidden = !pl; $("abPrevTx").hidden = pl }
 
 export function renderAbonos() {
@@ -142,11 +168,13 @@ export function renderAbonos() {
   $("abTabla").innerHTML = vis.length ? vis.map(a => {
     const c = checkAbono(a, st.config.emailDefecto);
     const aviso = c.e.length ? ` <span class="bad" title="${esc(c.e.join("; "))}">● revisar</span>` : "";
-    return `<tr class="${a.sel ? "" : "off"}"><td class="c"><input type="checkbox" class="chk" data-absel="${esc(a.id)}"${a.sel ? " checked" : ""} aria-label="Pagar abono de ${esc(a.nombre)}"></td><td><select class="inl" data-abfu="${esc(a.id)}" aria-label="Fuente">${fOpts(a.fuente)}</select></td><td>${esc(a.concepto)}</td><td class="mono ${rutOk(a.rut) ? "" : "bad"}">${esc(fmtRut(a.rut))}</td><td>${a.hist ? `<span class="dochist">${esc(a.hist)}</span>` : ""}${esc(a.nombre)}${aviso}</td><td class="mono" title="${esc(M_FORMA_ABONO[a.forma] || "")}">${esc(a.banco)} ${esc((M_BANCO[a.banco] || "?").split(" /")[0])} · ${esc(a.forma)} · ${esc(c.out.cuenta) || "sin cuenta"}</td><td class="num">${money(a.monto)}</td><td>${esc(a.glosa)}</td><td><button class="btn small danger" data-abdel="${esc(a.id)}">Quitar</button></td></tr>`;
+    return `<tr class="${a.sel ? "" : "off"}"><td class="c"><input type="checkbox" class="chk" data-absel="${esc(a.id)}"${a.sel ? " checked" : ""} aria-label="Pagar abono de ${esc(a.nombre)}"></td><td><select class="inl" data-abfu="${esc(a.id)}" aria-label="Fuente">${fOpts(a.fuente)}</select></td><td>${esc(a.concepto)}</td><td class="mono ${rutOk(a.rut) ? "" : "bad"}">${esc(fmtRut(a.rut))}</td><td>${a.hist ? `<span class="dochist">${esc(a.hist)}</span>` : ""}${esc(a.nombre)}${aviso}</td><td class="mono" title="${esc(M_FORMA_ABONO[a.forma] || "")}">${esc(a.banco)} ${esc((M_BANCO[a.banco] || "?").split(" /")[0])} · ${esc(a.forma)} · ${esc(c.out.cuenta) || "sin cuenta"}</td><td class="num">${money(a.monto)}</td><td>${esc(a.glosa)}</td><td><span class="row" style="margin:0;flex-wrap:nowrap"><button class="btn small" data-abed="${esc(a.id)}">Editar</button><button class="btn small danger" data-abdel="${esc(a.id)}">Quitar</button></span></td></tr>`;
   }).join("") : `<tr><td colspan="9" class="empty">${st.abonos.length ? "No hay abonos en esta fuente." : "No hay abonos pendientes. Importa la planilla del banco o pega filas arriba."}</td></tr>`;
   $("abTabla").querySelectorAll("[data-absel]").forEach(c => c.onchange = () => accion(null, () => actualizarAbonos([c.dataset.absel], { sel: c.checked })));
   $("abTabla").querySelectorAll("[data-abfu]").forEach(s => s.onchange = () => accion(null, () => actualizarAbonos([s.dataset.abfu], { fuente: s.value })));
-  $("abTabla").querySelectorAll("[data-abdel]").forEach(b => b.onclick = () => accion(b, () => quitarAbonos([b.dataset.abdel], "Quitar abono")));
+  $("abTabla").querySelectorAll("[data-abdel]").forEach(b => b.onclick = () => { if (b.dataset.abdel === editando) formAbono(null); accion(b, () => quitarAbonos([b.dataset.abdel], "Quitar abono")) });
+  $("abTabla").querySelectorAll("[data-abed]").forEach(b => b.onclick = () => formAbono(st.abonos.find(a => a.id === b.dataset.abed)));
+  if (editando && !st.abonos.some(a => a.id === editando)) { formAbono(null); toast("El abono que editabas ya no está pendiente") }
   const selV = vis.filter(a => a.sel);
   $("abChkTodos").checked = vis.length > 0 && selV.length === vis.length;
   $("abChkTodos").indeterminate = selV.length > 0 && selV.length < vis.length;

@@ -209,6 +209,22 @@ export async function agregarAbonos(prep, origen) {
   if (prep.abonos.length) ops.push(b => b.set(refHist(), hist("agregar abonos", "abonos", `${prep.abonos.length} abonos por ${money(prep.abonos.reduce((t, a) => t + a.monto, 0))} (${Object.entries(prep.byF).map(([k, n]) => k + " " + n).join(", ")})${origen ? " desde " + origen : ""}`)));
   await enLotes(ops);
 }
+// Edita un abono pendiente. Si cambian los datos bancarios, el historial
+// guarda el antes y el después completos (control contra fraude).
+const CAMPOS_ABONO = ["rut", "nombre", "email", "banco", "forma", "cuenta", "monto", "fuente", "concepto", "glosa"];
+export async function editarAbono(id, nuevo) {
+  const antes = st.abonos.find(a => a.id === id);
+  if (!antes) throw new Conflicto("El abono ya no está pendiente (otro usuario lo movió o lo incluyó en una nómina)");
+  const cambios = CAMPOS_ABONO.filter(k => S(antes[k]) !== S(nuevo[k]));
+  if (!cambios.length) return "sin cambios";
+  const bancario = cambios.some(k => ["rut", "banco", "forma", "cuenta"].includes(k));
+  const sub = (o, ks) => Object.fromEntries(ks.map(k => [k, k === "monto" ? o[k] : S(o[k])]));
+  const b = writeBatch(db);
+  b.update(refAbono(id), { ...Object.fromEntries(cambios.map(k => [k, nuevo[k] ?? ""])), ...f() });
+  b.set(refHist(), hist(bancario ? "cambio datos bancarios abono" : "editar abono", "abonos", `${fmtRut(nuevo.rut)} ${nuevo.nombre} (${money(nuevo.monto)}): cambia ${cambios.join(", ")}`,
+    sub(antes, bancario ? CAMPOS_ABONO : cambios), sub(nuevo, bancario ? CAMPOS_ABONO : cambios)));
+  return b.commit();
+}
 export const actualizarAbonos = (ids, cambios) => enLotes(ids.map(id => b => b.update(refAbono(id), { ...cambios, ...f() })));
 export async function quitarAbonos(ids, motivo) {
   const porId = Object.fromEntries(st.abonos.map(a => [a.id, a]));

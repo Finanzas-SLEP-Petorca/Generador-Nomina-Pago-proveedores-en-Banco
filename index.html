@@ -17,16 +17,16 @@
  "imports": {
   "./js/app.js": "./js/app.js?v=77ba9d558b",
   "./js/catalogos.js": "./js/catalogos.js?v=10b7750732",
-  "./js/datos.js": "./js/datos.js?v=a2865de850",
+  "./js/datos.js": "./js/datos.js?v=6615b5dc15",
   "./js/excel.js": "./js/excel.js?v=45e9b20adf",
   "./js/firebase-config.js": "./js/firebase-config.js?v=ffcd41549c",
   "./js/firebase.js": "./js/firebase.js?v=6eba6d64a6",
   "./js/formato.js": "./js/formato.js?v=d81ee9912f",
   "./js/importar.js": "./js/importar.js?v=51b36dd698",
-  "./js/ui/abonos.js": "./js/ui/abonos.js?v=29bf1869a8",
+  "./js/ui/abonos.js": "./js/ui/abonos.js?v=390bf1777e",
   "./js/ui/comun.js": "./js/ui/comun.js?v=d2fdaccfc5",
   "./js/ui/config.js": "./js/ui/config.js?v=fc62f90b44",
-  "./js/ui/guia.js": "./js/ui/guia.js?v=3ea428b312",
+  "./js/ui/guia.js": "./js/ui/guia.js?v=25a8a850d4",
   "./js/ui/paso1.js": "./js/ui/paso1.js?v=8963c78bcc",
   "./js/ui/paso2.js": "./js/ui/paso2.js?v=915197516d",
   "./js/ui/paso3.js": "./js/ui/paso3.js?v=aff19918ec",
@@ -290,7 +290,7 @@
   </div>
 
   <div class="card">
-    <h2>Agregar un abono</h2>
+    <h2 id="abFormTitulo">Agregar un abono</h2>
     <p class="sub">Al escribir el RUT se completan los datos del último pago a esa persona.</p>
     <div class="grid">
       <label>RUT<input id="abRut" autocomplete="off" placeholder="12345678-5"></label>
@@ -304,7 +304,7 @@
       <label>Concepto<select id="abConcepto1"></select></label>
       <label class="wide">Glosa (opcional)<input id="abGlosa" placeholder="Ej. Fondo fijo Escuela Básica X"></label>
     </div>
-    <div class="row"><button class="btn primary" id="abBtnAgregar">Agregar abono</button><span class="hint" id="abRutInfo"></span></div>
+    <div class="row"><button class="btn primary" id="abBtnAgregar">Agregar abono</button><button class="btn" id="abBtnCancelar" hidden>Cancelar edición</button><span class="hint" id="abRutInfo"></span></div>
   </div>
 
   <div class="card">

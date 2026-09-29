@@ -287,6 +287,23 @@ try {
     await A.fill("#abRut", P[0]); await A.dispatchEvent("#abRut", "change");
     assert.equal(await A.inputValue("#abNombre"), "VICTOR NUNEZ PEREZ"); assert.equal(await A.inputValue("#abForma"), "29");
     log("remuneraciones: rechazo vuelve a la pestaña, filtro por tipo en la bitácora y autocompletar desde el último pago");
+    // Editar un abono pendiente: el formulario se carga, se guarda y queda en el historial.
+    await A.click("#abBtnCancelar").catch(() => {});
+    const primero = await A.$eval("#abTabla [data-abed]", b => b.dataset.abed);
+    await A.click(`#abTabla [data-abed="${primero}"]`);
+    assert.match(await A.textContent("#abFormTitulo"), /Editar abono/);
+    await A.fill("#abMonto", "33333"); await A.selectOption("#abBanco", "012"); await A.selectOption("#abForma", "29");
+    await A.click("#abBtnAgregar");
+    await esperar(A, () => document.getElementById("toast").textContent.startsWith("Abono actualizado"));
+    await esperar(A, () => document.getElementById("abTabla").textContent.includes("$33.333") && document.getElementById("abTabla").textContent.includes("sin cuenta"));
+    assert.equal(await A.textContent("#abFormTitulo"), "Agregar un abono");
+    const hEd = await A.evaluate(async () => {
+      const fs = await import("https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js");
+      const q = await fs.getDocs(fs.query(fs.collection(fs.getFirestore(), "pago_historial"), fs.where("accion", "==", "cambio datos bancarios abono")));
+      return q.docs.map(d => d.data()).map(h => [h.antes.forma, h.despues.forma, h.despues.monto]);
+    });
+    assert.deepEqual(hEd, [["01", "29", 33333]]);
+    log("remuneraciones: editar un abono pendiente; el cambio de banco/forma queda en el historial con antes y después");
     assert.match(await A.textContent("#p6 [data-estado=s]"), /abonos? marcados?/);
     const navOk = await A.evaluate(() => { const n = document.querySelector(".steps"); return n.scrollWidth <= n.clientWidth + 1 });
     assert.ok(navOk, "las pestañas no caben en 1280 px");
