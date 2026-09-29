@@ -44,7 +44,8 @@ export function init() {
     }
     accion($("btnAddDoc"), async () => {
       await agregarDoc(d);
-      $("dMonto").value = ""; $("dNdoc").value = ""; $("dDc").value = ""; $("dNdoc").focus();
+      // Si mientras se guardaba se abrió otro documento para editar, no se toca el formulario.
+      if (!editando) { $("dMonto").value = ""; $("dNdoc").value = ""; $("dDc").value = ""; $("dNdoc").focus() }
       toast("Documento agregado a " + d.fuente);
     });
   };

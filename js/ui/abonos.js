@@ -90,7 +90,8 @@ export function init() {
     }
     accion($("abBtnAgregar"), async () => {
       await agregarAbonos({ abonos: [o], nuevasFuentes: [], fuentes: st.config.fuentes, byF: { [o.fuente]: 1 } }, "alta manual");
-      ["abRut", "abNombre", "abEmail", "abCuenta", "abMonto", "abGlosa"].forEach(id => $(id).value = ""); $("abRutInfo").textContent = ""; $("abRut").focus();
+      // Si mientras se guardaba se abrió otro abono para editar, no se toca el formulario.
+      if (!editando) { ["abRut", "abNombre", "abEmail", "abCuenta", "abMonto", "abGlosa"].forEach(id => $(id).value = ""); $("abRutInfo").textContent = ""; $("abRut").focus() }
       toast("Abono agregado a " + o.fuente + (c.w.length ? ". Ojo: " + c.w[0] : ""));
     });
   };
