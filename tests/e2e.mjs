@@ -264,13 +264,13 @@ try {
     const [abTxt, abXl] = await descargas(A, 2, () => A.click("#abBtnGenerar"));
     const hoyA = new Date(); const pref = hoyA.getFullYear() + String(hoyA.getMonth() + 1).padStart(2, "0") + String(hoyA.getDate()).padStart(2, "0");
     assert.equal(abTxt.nombre, pref + "_FONDOS_FIJOS_GENERAL.txt"); assert.equal(abXl.nombre, pref + "_FONDOS_FIJOS_GENERAL.xlsx");
-    assert.equal(abTxt.bytes.toString("utf8"), [[P[0], "VICTOR NUNEZ PEREZ", "FINANZAS@SLEPPETORCA.GOB.CL", "012", "29", "0", "150000"], [P[1], "MARIA JOSE SOTO", "finanzas@sleppetorca.gob.cl", "012", "30", P[1].slice(0, -1), "46290"], [P[2], "PEDRO ROJAS", "finanzas@sleppetorca.gob.cl", "001", "01", "987654", "27540"]].map(f => f.join("\t")).join("\r\n") + "\r\n");
+    assert.equal(abTxt.bytes.toString("utf8"), [[P[0], "VICTOR NUNEZ PEREZ", "FINANZAS@SLEPPETORCA.GOB.CL", "012", "29", "", "150000"], [P[1], "MARIA JOSE SOTO", "finanzas@sleppetorca.gob.cl", "012", "30", P[1].slice(0, -1), "46290"], [P[2], "PEDRO ROJAS", "finanzas@sleppetorca.gob.cl", "001", "01", "987654", "27540"]].map(f => f.join("\t")).join("\r\n") + "\r\n");
     const leido = XLSX.read(abXl.bytes, { type: "buffer" });
-    assert.equal(leido.SheetNames[0], "DETALLE"); assert.equal(leido.Sheets.DETALLE.B4.v, "VICTOR NUNEZ PEREZ"); assert.equal(leido.Sheets.DETALLE.F4.v, "0");
+    assert.equal(leido.SheetNames[0], "DETALLE"); assert.equal(leido.Sheets.DETALLE.B4.v, "VICTOR NUNEZ PEREZ"); assert.equal(leido.Sheets.DETALLE.F4?.v, undefined); // pago cash: cuenta en blanco
     await esperar(A, () => document.getElementById("dlgGenerada").open); await A.click("#genCerrar");
     const nAb = await A.$eval("#hDetail h2", h => h.textContent);
     assert.match(nAb, /remuneraciones \(fondos fijos\)/);
-    log("remuneraciones: genera", abTxt.nombre, "y", abXl.nombre, "(7 campos por línea, cuenta 0 y CuentaRUT)");
+    log("remuneraciones: genera", abTxt.nombre, "y", abXl.nombre, "(7 campos por línea, pago cash sin cuenta y CuentaRUT)");
     // Bitácora: filtro por tipo, carga, rechazo y vuelta a pendientes.
     await A.selectOption("#hTipo", "abonos");
     const filas = await A.$$eval("#tbBit tr[data-id]", t => t.length); assert.equal(filas, 1);

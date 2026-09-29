@@ -134,7 +134,7 @@ Las preferencias de interfaz quedan en `localStorage`: último paso abierto, fil
 La pestaña **Remuneraciones** arma nóminas con la planilla BancoEstado **“Pago Solo Abonos DET” de 7 columnas**. Sirve para pagar a personas naturales: viáticos, fondos fijos y cajas chicas, honorarios y remuneraciones. Cada línea del archivo es un pago: RUT, nombre, email, banco, forma de pago, N° de cuenta y monto. No lleva documentos ni sector.
 
 - **Cargar:** se importa la planilla del banco ya completa (hoja DETALLE, desde la fila 4) o se pegan filas. El concepto y la fuente se deducen del nombre del archivo cuando se puede.
-- **Normalización:** los nombres pasan a mayúsculas sin tildes ni ñ. Las formas de pago sin cuenta (20, 23, 28, 29: vale vista o pago cash) van con cuenta 0, y CuentaRUT (30) usa el RUT sin dígito verificador.
+- **Normalización:** los nombres pasan a mayúsculas sin tildes ni ñ. Las formas de pago sin cuenta (20, 23, 28, 29: vale vista o pago cash) van con el N° de cuenta en blanco, y CuentaRUT (30) usa el RUT sin dígito verificador.
 - **Controles:** el panel avisa si:
   - los datos bancarios de una persona cambiaron respecto de su último pago;
   - un RUT y monto se repiten en la nómina;

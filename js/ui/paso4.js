@@ -139,7 +139,7 @@ function renderNomDetail() {
     <thead><tr><th>Beneficiario</th><th>Cuenta</th><th>${esAbonos(n) ? "Abonos" : "Documentos"}</th><th style="text-align:right">Monto</th><th>Resultado</th><th>Motivo de rechazo</th><th></th></tr></thead>
     <tbody>${n.pagos.map((p, i) => `<tr>
       <td><span class="mono">${esc(fmtRut(p.rut))}</span><br>${esc(p.nombre)}</td>
-      <td class="mono"${p.forma ? ` title="${esc(M_FORMA_ABONO[p.forma] || "")}"` : ""}>${esc(p.banco)}${p.forma ? " · " + esc(p.forma) + " ·" : ""} ${esc(p.cuenta)}</td>
+      <td class="mono"${p.forma ? ` title="${esc(M_FORMA_ABONO[p.forma] || "")}"` : ""}>${esc(p.banco)}${p.forma ? " · " + esc(p.forma) + " ·" : ""} ${esc(p.cuenta) || "sin cuenta"}</td>
       <td>${esAbonos(n) ? p.docs.map(d => `<span class="hint">${esc(d.concepto || n.concepto)}${d.glosa ? " · " + esc(d.glosa) : ""} ${money(d.monto)}</span>`).join("<br>") : p.docs.map(d => `<span class="mono">${esc(d.ndoc)}</span> <span class="hint">${esc((M_TIPO[d.tipo] || d.tipo))} ${money(d.monto)}${d.dc ? " · " + esc(d.dc) : ""}</span>`).join("<br>")}</td>
       <td class="num">${money(p.monto)}</td>
       <td><select class="inl" data-pe="${i}" ${cargada ? "" : "disabled"} aria-label="Resultado">${Object.entries(EST_PAGO).map(([k, t]) => `<option value="${k}"${p.estado === k ? " selected" : ""}>${t}</option>`).join("")}</select></td>

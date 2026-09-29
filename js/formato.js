@@ -226,11 +226,12 @@ export function checkAbono(a, emailDefecto = "") {
   const forma = pad(a.forma, 2);
   if (!M_FORMA_ABONO[forma]) e.push("forma de pago " + (forma || "vacía") + " no válida");
   if (FORMAS_SOLO_BE.has(forma) && banco !== "012") e.push("la forma de pago " + forma + " solo sirve con BancoEstado (012)");
-  // Vale vista / pago cash: la cuenta va en 0. CuentaRUT: el RUT sin dígito verificador.
+  // Vale vista / pago cash: el N° de cuenta va en blanco. CuentaRUT: el RUT sin dígito verificador.
   let cuenta = normCuenta(a.cuenta);
-  if (FORMAS_SIN_CUENTA.has(forma)) { if (cuenta && !/^0+$/.test(cuenta)) w.push("la forma " + forma + " no usa cuenta; se informa 0"); cuenta = "0" }
+  const sinCuenta = FORMAS_SIN_CUENTA.has(forma);
+  if (sinCuenta) { if (cuenta && !/^0+$/.test(cuenta)) w.push("la forma " + forma + " no usa cuenta; se deja en blanco"); cuenta = "" }
   if (forma === "30" && rut) { const cr = rut.slice(0, -1); if (!cuenta) cuenta = cr; else if (cuenta !== cr) w.push("en CuentaRUT la cuenta debe ser el RUT sin dígito verificador (" + cr + ")") }
-  if (!cuenta) e.push("falta número de cuenta");
+  if (!cuenta && !sinCuenta) e.push("falta número de cuenta");
   if (cuenta.length > 17) e.push("número de cuenta supera 17 dígitos");
   const monto = a.monto;
   if (!(Number.isInteger(monto) && monto > 0)) e.push("monto debe ser un entero mayor a cero");
@@ -265,8 +266,9 @@ export function buildAbonos(fuente, ctx) {
     vistos.set(k, true);
     if (enCurso[k]) issues.push({ lvl: "warn", where, msg: `ya hay un pago a este RUT por el mismo monto en la nómina N° ${enCurso[k]}, aún sin resultado; revisa que no sea un pago repetido` });
     const ult = ultimoAbono(nominas, c.out.rut);
-    if (ult && (ult.p.banco !== c.out.banco || ult.p.cuenta !== c.out.cuenta || (ult.p.forma && ult.p.forma !== c.out.forma)))
-      issues.push({ lvl: "warn", where, msg: `los datos bancarios cambiaron respecto del último pago (N° ${ult.num}: banco ${ult.p.banco}, forma ${ult.p.forma || "?"}, cuenta ${ult.p.cuenta}). Confirma el cambio antes de pagar.` });
+    const cta = v => /^0*$/.test(S(v)) ? "" : S(v); // "0" y en blanco son lo mismo
+    if (ult && (ult.p.banco !== c.out.banco || cta(ult.p.cuenta) !== cta(c.out.cuenta) || (ult.p.forma && ult.p.forma !== c.out.forma)))
+      issues.push({ lvl: "warn", where, msg: `los datos bancarios cambiaron respecto del último pago (N° ${ult.num}: banco ${ult.p.banco}, forma ${ult.p.forma || "?"}, cuenta ${ult.p.cuenta || "en blanco"}). Confirma el cambio antes de pagar.` });
     const key = group ? c.out.rut + "|" + c.out.banco + "|" + c.out.forma + "|" + c.out.cuenta : "#" + (seq++);
     if (!groups.has(key)) groups.set(key, { p: { ...c.out, monto: 0 }, docs: [] });
     const g = groups.get(key);

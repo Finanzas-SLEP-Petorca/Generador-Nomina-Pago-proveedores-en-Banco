@@ -203,7 +203,7 @@ ok("nombre de archivo", () => {
 ok("abonos: validación de la planilla de 7 columnas", () => {
   const base = { rut: "11.111.111-1", nombre: "Víctor Muñoz Pérez", email: "", banco: "12", forma: "29", cuenta: "", monto: 150000 };
   let c = F.checkAbono(base, "finanzas@sleppetorca.gob.cl");
-  assert.deepEqual(c.e, []); assert.equal(c.out.nombre, "VICTOR MUNOZ PEREZ"); assert.equal(c.out.cuenta, "0"); assert.equal(c.out.banco, "012");
+  assert.deepEqual(c.e, []); assert.equal(c.out.nombre, "VICTOR MUNOZ PEREZ"); assert.equal(c.out.cuenta, ""); // pago cash: cuenta en blanco assert.equal(c.out.banco, "012");
   assert.equal(c.out.email, "finanzas@sleppetorca.gob.cl");
   c = F.checkAbono({ ...base, forma: "30", cuenta: "" }); assert.equal(c.out.cuenta, "11111111");
   c = F.checkAbono({ ...base, forma: "30", cuenta: "123" }); assert.match(c.w.join(), /CuentaRUT/);
@@ -225,7 +225,8 @@ ok("abonos: nómina, .txt de 7 columnas y avisos", () => {
   const nominas = [{ num: 4, tipo: "abonos", estado: "cargada", pagos: [{ rut: "123456785", banco: "001", forma: "01", cuenta: "999", monto: 2000, estado: "pendiente" }] }];
   const r = F.buildAbonos("SEP", { abonos: ab, nominas, group: false, email: "fin@x.cl" });
   assert.equal(r.nBen, 3); assert.equal(r.total, 4000); assert.equal(r.errs, 0);
-  assert.equal(F.toTxt(r.lines), "111111111\tUNO\tfin@x.cl\t012\t29\t0\t1000\r\n123456785\tDOS\td@x.cl\t001\t01\t555\t2000\r\n111111111\tUNO\tfin@x.cl\t012\t29\t0\t1000\r\n");
+  assert.equal(F.toTxt(r.lines), "111111111\tUNO\tfin@x.cl\t012\t29\t\t1000\r\n123456785\tDOS\td@x.cl\t001\t01\t555\t2000\r\n111111111\tUNO\tfin@x.cl\t012\t29\t\t1000\r\n");
+  assert.equal(F.checkAbono({ rut: "111111111", nombre: "UNO", banco: "012", forma: "29", cuenta: "123", monto: 5 }).out.cuenta, "");
   const msgs = r.issues.map(i => i.msg).join(" | ");
   assert.match(msgs, /más de una vez/); assert.match(msgs, /nómina N° 4, aún sin resultado/); assert.match(msgs, /datos bancarios cambiaron/);
   const g = F.buildAbonos("SEP", { abonos: ab, nominas: [], group: true });

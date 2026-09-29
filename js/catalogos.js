@@ -26,15 +26,15 @@ export const DIAS = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
 
 // ---------- Nómina de remuneraciones y abonos (planilla "Pago Solo Abonos DET", 7 columnas) ----------
 // Formas de pago de la planilla del banco (pestañas Forma de Pago y Ejemplo).
-// Las formas sin cuenta (vale vista / pago cash) van con N° de cuenta 0.
+// Las formas sin cuenta (vale vista / pago cash) van con el N° de cuenta en blanco.
 export const FORMAS_ABONO = [
   ["01", "Cuenta corriente / vista (BancoEstado y otros bancos)"],
   ["02", "Cuenta de ahorro (solo BancoEstado)"],
-  ["20", "Vale vista / pago cash, cuenta 0 (solo BancoEstado)"],
+  ["20", "Vale vista / pago cash, sin cuenta (solo BancoEstado)"],
   ["22", "Chequera electrónica (solo BancoEstado)"],
-  ["23", "Vale vista / pago cash, cuenta 0 (solo BancoEstado)"],
-  ["28", "Vale vista / pago cash, cuenta 0 (solo BancoEstado)"],
-  ["29", "Vale vista / pago cash, cuenta 0 (solo BancoEstado)"],
+  ["23", "Vale vista / pago cash, sin cuenta (solo BancoEstado)"],
+  ["28", "Vale vista / pago cash, sin cuenta (solo BancoEstado)"],
+  ["29", "Vale vista / pago cash, sin cuenta (solo BancoEstado)"],
   ["30", "CuentaRUT (solo BancoEstado)"]
 ];
 export const M_FORMA_ABONO = mapOf(FORMAS_ABONO);
