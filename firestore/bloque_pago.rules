@@ -89,6 +89,23 @@
       allow delete: if pAllowed();
     }
 
+    // --- Abonos pendientes de la nómina de remuneraciones (7 columnas) ---
+    match /pago_abonos/{abonoId} {
+      allow read: if pAllowed();
+      allow create, update: if pAllowed() && pFirmado()
+        && request.resource.data.keys().hasOnly(
+             ['rut', 'nombre', 'email', 'banco', 'forma', 'cuenta', 'monto', 'fuente',
+              'concepto', 'glosa', 'sel', 'hist',
+              'createdAt', 'createdBy', 'updatedAt', 'updatedBy'])
+        && request.resource.data.rut is string
+        && request.resource.data.cuenta is string
+        && request.resource.data.monto is int
+        && request.resource.data.monto > 0
+        && request.resource.data.fuente is string;
+      // Se borran al pasar a una nómina o al quitarlos de la lista.
+      allow delete: if pAllowed();
+    }
+
     // --- Bitácora de nóminas (id del documento = número correlativo) ---
     match /pago_nominas/{nominaId} {
       allow read: if pAllowed();

@@ -4,21 +4,21 @@
 
 import { db, fs, firma } from "./firebase.js";
 import { FUENTES_DEFECTO, EMAIL_DEFECTO, PREFIJO_DEFECTO } from "./catalogos.js";
-import { S, checkProv, money, fmtRut, fmtISO, todayISO, normDc } from "./formato.js";
+import { S, checkProv, checkAbono, money, fmtRut, fmtISO, todayISO, normDc } from "./formato.js";
 
 const { doc, collection, onSnapshot, query, where, runTransaction, writeBatch, serverTimestamp, Timestamp, getDoc, deleteDoc } = fs;
 
-const C = { config: "pago_config", prov: "pago_proveedores", docs: "pago_documentos", nom: "pago_nominas", hist: "pago_historial" };
+const C = { config: "pago_config", prov: "pago_proveedores", docs: "pago_documentos", abonos: "pago_abonos", nom: "pago_nominas", hist: "pago_historial" };
 const refGeneral = () => doc(db, C.config, "general");
 const refContador = () => doc(db, C.config, "contador");
 
 // ---------- estado compartido ----------
 export const st = {
   email: "", admin: false,
-  maestro: {}, docs: [], nominas: [],
+  maestro: {}, docs: [], nominas: [], abonos: [], abonosError: null,
   config: { fuentes: [...FUENTES_DEFECTO], emailDefecto: EMAIL_DEFECTO, feriados: [], prefijoArchivo: PREFIJO_DEFECTO },
   contadorExiste: false, nextNum: 1,
-  listo: { prov: false, docs: false, nom: false, general: false, contador: false },
+  listo: { prov: false, docs: false, nom: false, general: false, contador: false, abonos: false },
   error: null
 };
 const oyentes = new Set();
@@ -60,6 +60,11 @@ export function suscribir() {
   bajas.push(onSnapshot(collection(db, C.docs), qs => {
     st.docs = qs.docs.map(s => ({ ...datos(s), id: s.id })); st.listo.docs = true; avisar();
   }, err));
+  // Abonos (remuneraciones): si las reglas nuevas aún no se publican, la
+  // lectura se rechaza; eso no debe cerrar el resto del panel.
+  bajas.push(onSnapshot(collection(db, C.abonos), qs => {
+    st.abonos = qs.docs.map(s => ({ ...datos(s), id: s.id })); st.abonosError = null; st.listo.abonos = true; avisar();
+  }, e => { st.abonos = []; st.abonosError = e; st.listo.abonos = true; avisar() }));
   bajas.push(onSnapshot(collection(db, C.nom), qs => {
     st.nominas = qs.docs.map(s => ({ ...datos(s), id: s.id })).sort((a, b) => a.num - b.num); st.listo.nom = true; avisar();
   }, err));
@@ -80,7 +85,7 @@ export function suscribir() {
 export function desuscribir() {
   bajas.forEach(f => f()); bajas = [];
   Object.keys(st.listo).forEach(k => st.listo[k] = false);
-  st.maestro = {}; st.docs = []; st.nominas = []; st.error = null;
+  st.maestro = {}; st.docs = []; st.nominas = []; st.abonos = []; st.abonosError = null; st.error = null;
 }
 
 // Historial de una referencia ("nomina:12", "proveedor:769915303").
@@ -95,6 +100,7 @@ const f = () => firma(st.email);
 const hist = (accion, ref, detalle, antes = null, despues = null) => ({ accion, ref, detalle, antes, despues, autor: st.email, createdAt: serverTimestamp() });
 const refHist = () => doc(collection(db, C.hist));
 const refDoc = id => doc(db, C.docs, id);
+const refAbono = id => doc(db, C.abonos, id);
 
 // Aplica operaciones (fn(batch)) en batches de hasta 400 escrituras.
 async function enLotes(ops, alAvanzar) {
@@ -195,6 +201,27 @@ export async function quitarDocs(ids, motivo) {
   return enLotes(ops);
 }
 
+// ---------- abonos pendientes (remuneraciones) ----------
+const resumenAbono = a => ({ rut: a.rut, nombre: a.nombre, monto: a.monto, fuente: a.fuente, concepto: a.concepto || "", cuenta: a.cuenta, banco: a.banco, forma: a.forma });
+export async function agregarAbonos(prep, origen) {
+  const ops = prep.abonos.map(a => b => b.set(refAbono(nuevoIdDoc()), { ...a, createdAt: serverTimestamp(), createdBy: st.email, ...f() }));
+  if (prep.nuevasFuentes.length) ops.push(opConfig({ fuentes: prep.fuentes }));
+  if (prep.abonos.length) ops.push(b => b.set(refHist(), hist("agregar abonos", "abonos", `${prep.abonos.length} abonos por ${money(prep.abonos.reduce((t, a) => t + a.monto, 0))} (${Object.entries(prep.byF).map(([k, n]) => k + " " + n).join(", ")})${origen ? " desde " + origen : ""}`)));
+  await enLotes(ops);
+}
+export const actualizarAbonos = (ids, cambios) => enLotes(ids.map(id => b => b.update(refAbono(id), { ...cambios, ...f() })));
+export async function quitarAbonos(ids, motivo) {
+  const porId = Object.fromEntries(st.abonos.map(a => [a.id, a]));
+  const ops = [];
+  for (let i = 0; i < ids.length; i += 300) {
+    const tramo = ids.slice(i, i + 300);
+    tramo.forEach(id => ops.push(b => b.delete(refAbono(id))));
+    const lista = tramo.map(id => porId[id]).filter(Boolean);
+    ops.push(b => b.set(refHist(), hist("borrar abonos pendientes", "abonos", `${motivo}: ${lista.length} abonos por ${money(lista.reduce((t, a) => t + (a.monto || 0), 0))}`, { abonos: lista.map(resumenAbono) }, null)));
+  }
+  return enLotes(ops);
+}
+
 // ---------- nóminas ----------
 export class Conflicto extends Error { }
 
@@ -208,10 +235,11 @@ export class Conflicto extends Error { }
 // Por eso un rechazo se reintenta unas veces con espera creciente: si era
 // un choque, el reintento toma el número siguiente; si era un rechazo real
 // (sin permiso, datos inválidos), vuelve a fallar y se informa.
-export async function generarNomina(r, archivo) {
+export const generarNomina = (r, archivo) => conReintento(al => transaccionGenerar(r, archivo, al));
+async function conReintento(transaccion) {
   for (let intento = 0; ; intento++) {
     let usado = null;
-    try { return await transaccionGenerar(r, archivo, n => { usado = n }) }
+    try { return await transaccion(n => { usado = n }) }
     catch (e) {
       if (e.code !== "permission-denied" || usado == null || intento >= 5) throw e;
       await new Promise(ok => setTimeout(ok, 250 * (intento + 1) + Math.random() * 400));
@@ -255,6 +283,39 @@ function transaccionGenerar(r, archivo, alReservar) {
   });
 }
 
+// Nómina de remuneraciones y abonos (7 columnas): misma transacción y mismo
+// correlativo que proveedores; verifica que cada abono siga pendiente,
+// marcado y con los mismos datos bancarios y monto que se revisaron.
+export const generarNominaAbonos = (r, archivo, concepto) => conReintento(al => runTransaction(db, async tx => {
+  const cSnap = await tx.get(refContador());
+  const num = cSnap.exists() ? cSnap.data().nextNum : 1;
+  al(num);
+  const nRef = doc(db, C.nom, String(num));
+  const [nSnap, aSnaps] = await Promise.all([tx.get(nRef), Promise.all(r.ids.map(id => tx.get(refAbono(id))))]);
+  if (nSnap.exists()) throw new Conflicto(`La nómina N° ${num} ya existe. Recarga la página e inténtalo de nuevo.`);
+  const porId = Object.fromEntries(r.groups.flatMap(g => g.docs.map(d => [d.id, g])));
+  const movidos = aSnaps.filter((s, i) => {
+    if (!s.exists() || !s.data().sel || s.data().fuente !== r.fuente) return true;
+    const a = checkAbono(s.data(), st.config.emailDefecto).out, g = porId[r.ids[i]];
+    return !g || ["rut", "nombre", "banco", "forma", "cuenta"].some(k => a[k] !== g.p[k]) || !g.docs.some(d => d.id === r.ids[i] && d.monto === a.monto);
+  }).length;
+  if (movidos) throw new Conflicto(`${movidos} abono${movidos > 1 ? "s" : ""} de ${r.fuente} cambió o ya no está pendiente (otro usuario lo movió, quitó o incluyó en otra nómina). No se generó la nómina; revisa la lista y vuelve a intentarlo.`);
+  const nomina = {
+    num, tipo: "abonos", concepto: S(concepto), fuente: r.fuente, archivo, estado: "generada",
+    creadaAt: serverTimestamp(), creadaPor: st.email,
+    fechaCarga: "", fechaPago: "", operacion: "", obs: "", total: r.total,
+    lineas: r.lines.map(l => ({ tipo: l.tipo, f: [...l.f] })),
+    pagos: r.groups.map(g => ({ rut: g.p.rut, nombre: g.p.nombre, email: g.p.email, banco: g.p.banco, forma: g.p.forma, cuenta: g.p.cuenta, monto: g.sum, estado: "pendiente", motivo: "", reint: "", docs: g.docs.map(d => ({ abonoId: d.id, monto: d.monto, concepto: d.concepto || "", glosa: d.glosa || "" })) })),
+    ...f()
+  };
+  if (cSnap.exists()) tx.update(refContador(), { nextNum: num + 1, ...f() });
+  else tx.set(refContador(), { nextNum: num + 1, ...f() });
+  tx.set(nRef, nomina);
+  r.ids.forEach(id => tx.delete(refAbono(id)));
+  tx.set(refHist(), hist("generar nómina", "nomina:" + num, `N° ${num} remuneraciones ${S(concepto)} ${r.fuente}: ${r.nBen} pagos, total ${money(r.total)}. Archivo ${archivo}.txt`, null, { archivo, total: r.total, pagos: r.nBen, abonos: r.nDocs, tipo: "abonos" }));
+  return nomina;
+}));
+
 // Modifica una nómina leyendo su estado actual dentro de una transacción.
 // fn(n) devuelve { cambios, hist: [..], docs: [..documentos a devolver] }.
 async function modificarNomina(id, fn) {
@@ -266,10 +327,19 @@ async function modificarNomina(id, fn) {
     const r = fn(n);
     tx.update(ref, { ...r.cambios, ...f() });
     (r.docs || []).forEach(d => tx.set(refDoc(nuevoIdDoc()), { ...d, createdAt: serverTimestamp(), createdBy: st.email, ...f() }));
+    (r.abonos || []).forEach(a => tx.set(refAbono(nuevoIdDoc()), { ...a, createdAt: serverTimestamp(), createdBy: st.email, ...f() }));
     (r.hist || []).forEach(h => tx.set(refHist(), h));
     return n;
   });
 }
+// Abono que vuelve a pendientes (rechazo o nómina anulada), con sus datos bancarios.
+const abonoDevuelto = (n, p, d, texto) => { const o = { rut: p.rut, nombre: p.nombre, email: p.email || "", banco: p.banco, forma: p.forma, cuenta: p.cuenta, monto: d.monto, fuente: n.fuente, concepto: d.concepto || n.concepto || "", sel: true, hist: texto }; if (d.glosa) o.glosa = d.glosa; return o };
+// Devuelve los ítems de un pago al lugar que corresponde según el tipo de nómina.
+const devolver = (n, pagos, texto) => {
+  const out = { docs: [], abonos: [] };
+  pagos.forEach(p => p.docs.forEach(d => n.tipo === "abonos" ? out.abonos.push(abonoDevuelto(n, p, d, texto)) : out.docs.push(docDevuelto(n, p, d, texto))));
+  return out;
+};
 const docDevuelto = (n, p, d, texto) => { const o = { rut: p.rut, fecha: d.fecha, monto: d.monto, ndoc: d.ndoc, tipo: d.tipo, fuente: n.fuente, sel: true, hist: texto }; if (d.dc) o.dc = d.dc; return o };
 const refN = n => "nomina:" + n.num;
 
@@ -310,16 +380,17 @@ export const volverPendientes = (id, i) => modificarNomina(id, n => {
   if (p.estado !== "rechazado" || p.reint) throw new Conflicto("Este pago no está rechazado o ya se reintegró");
   p.reint = todayISO();
   const texto = `Rechazado en nómina N° ${n.num}${p.motivo ? ": " + p.motivo : ""}`;
+  const que = n.tipo === "abonos" ? "abono" : "documento";
   return {
-    cambios: { pagos }, docs: p.docs.map(d => docDevuelto(n, p, d, texto)),
-    hist: [hist("reintegrar pago rechazado", refN(n), `${p.docs.length} documento${p.docs.length > 1 ? "s" : ""} de ${fmtRut(p.rut)} ${p.nombre} vuelven a pendientes (${money(p.monto)})`, { estado: "rechazado", motivo: p.motivo, reint: "" }, { reint: p.reint })]
+    cambios: { pagos }, ...devolver(n, [p], texto),
+    hist: [hist("reintegrar pago rechazado", refN(n), `${p.docs.length} ${que}${p.docs.length > 1 ? "s" : ""} de ${fmtRut(p.rut)} ${p.nombre} vuelven a pendientes (${money(p.monto)})`, { estado: "rechazado", motivo: p.motivo, reint: "" }, { reint: p.reint })]
   };
 });
 export const anularNomina = id => modificarNomina(id, n => {
   if (n.estado !== "generada") throw new Conflicto("Solo se anula una nómina que no se ha cargado en el banco");
   const texto = `Viene de la nómina N° ${n.num} anulada`;
-  const docs = []; n.pagos.forEach(p => p.docs.forEach(d => docs.push(docDevuelto(n, p, d, texto))));
-  return { cambios: { estado: "anulada" }, docs, hist: [hist("anular nómina", refN(n), `N° ${n.num} ${n.fuente} anulada; ${docs.length} documentos vuelven a pendientes`, { estado: "generada" }, { estado: "anulada" })] };
+  const vuelta = devolver(n, n.pagos, texto), cuantos = vuelta.docs.length + vuelta.abonos.length;
+  return { cambios: { estado: "anulada" }, ...vuelta, hist: [hist("anular nómina", refN(n), `N° ${n.num} ${n.fuente} anulada; ${cuantos} ${n.tipo === "abonos" ? "abonos" : "documentos"} vuelven a pendientes`, { estado: "generada" }, { estado: "anulada" })] };
 });
 
 // ---------- respaldo JSON (exportar e importar) ----------
@@ -330,6 +401,7 @@ export function exportarRespaldo() {
     version: 2, exportado: new Date().toISOString(),
     maestro: Object.fromEntries(Object.entries(st.maestro).map(([k, p]) => [k, soloProv(p)])),
     docs: st.docs.map(d => ({ ...limpia(d) })),
+    abonos: st.abonos.map(a => ({ ...limpia(a) })),
     nominas: st.nominas.map(n => ({ ...limpia(n), creadaAt: iso(n.creadaAt) })),
     config: { fuentes: st.config.fuentes, email: st.config.emailDefecto, feriados: st.config.feriados, prefijoArchivo: st.config.prefijoArchivo, nextNum: st.nextNum }
   };

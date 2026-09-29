@@ -167,6 +167,19 @@ test("cargadaPor solo puede ser quien escribe", async () => {
   await assertSucceeds(updateDoc(doc(db(ADMIN), "pago_nominas/1"), { estado: "generada", fechaCarga: "", fechaPago: "", cargadaPor: "", cargadaAt: null, ...firma(ADMIN) }));
 });
 
+test("abonos pendientes: firmados, con campos permitidos y monto entero", async () => {
+  const u = db(USUARIO);
+  const ab = (extra = {}) => ({ rut: "111111111", nombre: "UNO", email: "", banco: "012", forma: "29", cuenta: "0", monto: 1000, fuente: "SEP", concepto: "FONDOS FIJOS", sel: true, ...firma(USUARIO), ...extra });
+  await assertSucceeds(setDoc(doc(u, "pago_abonos/a"), ab({ glosa: "Escuela X", hist: "Rechazado en nómina N° 3" })));
+  await assertFails(setDoc(doc(u, "pago_abonos/b"), ab({ monto: 0 })));
+  await assertFails(setDoc(doc(u, "pago_abonos/b"), ab({ monto: 10.5 })));
+  await assertFails(setDoc(doc(u, "pago_abonos/b"), ab({ sector: "64" })));
+  await assertFails(setDoc(doc(u, "pago_abonos/b"), ab({ updatedBy: ADMIN })));
+  await assertSucceeds(updateDoc(doc(u, "pago_abonos/a"), { sel: false, ...firma(USUARIO) }));
+  await assertFails(getDoc(doc(db(FUERA), "pago_abonos/a")));
+  await assertSucceeds(deleteDoc(doc(u, "pago_abonos/a")));
+});
+
 test("el historial solo se agrega, firmado por quien escribe", async () => {
   const u = db(USUARIO);
   const h = (extra = {}) => ({ accion: "editar proveedor", ref: "proveedor:1", detalle: "", antes: { cuenta: "1" }, despues: { cuenta: "2" }, autor: USUARIO, createdAt: serverTimestamp(), ...extra });
