@@ -69,7 +69,7 @@ Si falta este paso, al pedir el enlace aparece "este dominio no está autorizado
 
 1. En GitHub, abre *Settings → Pages → Build and deployment*.
 2. Elige **Source: Deploy from a branch**, **Branch: main** y carpeta **/ (root)**. Pulsa **Save**.
-3. En uno o dos minutos el panel queda en `https://finanzas-slep-petorca.github.io/Generador-Nomina-Pago-proveedores-en-Banco/`.
+3. En uno o dos minutos el panel queda en `https://finanzas-slep-petorca.github.io/Generador-Nominas-Pago-en-BancoEstado/`.
 
 Cada cambio que llega a `main` se publica solo. El archivo `.nojekyll` evita que GitHub procese el sitio con Jekyll.
 
