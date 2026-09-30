@@ -3,6 +3,7 @@
 import { M_TIPO, EST_PAGO } from "../catalogos.js";
 import { S, normRut, fmtRut, money, fmtFecha, fmtISO, isoLocal, todayISO, resultadoDesde, fmtDue, diaHabilSiguiente, esHabil, nombreDe, nomStatus, nombreNomina, toTxt, today, reportePagos, reporteHojas } from "../formato.js";
 import { bankWorkbook, abonosWorkbook, libroReporte } from "../excel.js";
+import { pdfReporte, cargarPdf } from "../pdf.js";
 import { M_FORMA_ABONO } from "../catalogos.js";
 import { st, aFecha, suscribirHistorial, cargarNomina, guardarCarga, deshacerCarga, resultadoPago, pagarPendientes, volverPendientes, anularNomina, exportarRespaldo } from "../datos.js";
 import { $, esc, toast, accion, descargar, prefs, guardarPrefs, mensajeError } from "./comun.js";
@@ -54,13 +55,27 @@ export function init() {
     rep.periodo = k === "hoy" ? [hoy(), hoy()] : k === "mes" ? mesDe(new Date()) : k === "ant" ? mesDe(new Date(), -1) : ["", ""];
     renderReporte();
   });
-  $("btnReporte").onclick = () => {
+  // Excel y PDF del reporte: mismo período, filtros y tablas.
+  const armarReporte = () => {
     const r = reportePagos(st.nominas, filtroReporte());
-    if (!r.nominas.length) { toast("No hay nóminas cargadas con fecha de pago en ese período"); return }
+    if (!r.nominas.length) { toast("No hay nóminas cargadas con fecha de pago en ese período"); return null }
     const [d, h] = rep.periodo;
-    const nombre = "reporte_pagos_" + (d || h ? (d || "inicio").replace(/-/g, "") + "_" + (h || "hoy").replace(/-/g, "") : "todo") + ".xlsx";
-    try { descargar(nombre, libroReporte(reporteHojas(r, { desde: d, hasta: h, generado: fmtISO(todayISO()) + " " + new Date().toTimeString().slice(0, 5), por: nombreDe(st.email) }))) }
+    const nombre = "reporte_pagos_" + (d || h ? (d || "inicio").replace(/-/g, "") + "_" + (h || "hoy").replace(/-/g, "") : "todo");
+    const tipos = { "*": "Todas", proveedores: "Proveedores", abonos: "Remuneraciones" };
+    const meta = { desde: d, hasta: h, filtros: `Tipo: ${tipos[rep.tipo]} · Fuente: ${rep.fuente === "*" ? "Todas" : rep.fuente}`, generado: fmtISO(todayISO()) + " " + new Date().toTimeString().slice(0, 5), por: nombreDe(st.email) };
+    return { r, nombre, meta };
+  };
+  $("btnReporte").onclick = () => {
+    const a = armarReporte(); if (!a) return;
+    try { descargar(a.nombre + ".xlsx", libroReporte(reporteHojas(a.r, a.meta))) }
     catch (e) { toast("No se pudo armar el reporte: " + mensajeError(e)) }
+  };
+  $("btnReportePdf").onclick = () => {
+    const a = armarReporte(); if (!a) return;
+    accion($("btnReportePdf"), async () => {
+      try { descargar(a.nombre + ".pdf", pdfReporte(a.r, a.meta, await cargarPdf())) }
+      catch (e) { toast("No se pudo armar el PDF: " + mensajeError(e)) }
+    });
   };
   $("btnBackup").onclick = () => descargar("respaldo_panel_pago_" + today() + ".json", JSON.stringify(exportarRespaldo(), null, 1));
 }

@@ -76,7 +76,7 @@ const SECCIONES = [
       <li><b>Anular nómina:</b> solo si todavía no se cargó en el banco. Sus documentos vuelven a pendientes y la nómina queda cerrada.</li>
       <li><b>Deshacer carga:</b> vuelve a “generada” si ningún pago tiene resultado.</li>
       <li>Puedes descargar otra vez el .txt o el Excel de cualquier nómina, y exportar la bitácora a CSV.</li>
-      <li><b>Reporte de pagos:</b> al final de la Bitácora. Elige el período (por fecha de pago de la nómina), el tipo y la fuente. Muestra lo pagado, lo rechazado y lo pendiente de resultado, y <b>Descargar reporte (Excel)</b> baja el resumen por fuente, el detalle de lo pagado por documento o abono, y los rechazos.</li>
+      <li><b>Reporte de pagos:</b> al final de la Bitácora. Elige el período (por fecha de pago de la nómina), el tipo y la fuente. Muestra lo pagado, lo rechazado y lo pendiente de resultado, y lo descarga en <b>Excel</b> o en <b>PDF</b> (listo para imprimir o enviar): resumen por fuente, nóminas del período, detalle de lo pagado por documento o abono, y rechazos.</li>
     </ul>`
   },
   {

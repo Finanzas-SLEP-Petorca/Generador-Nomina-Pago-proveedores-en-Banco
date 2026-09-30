@@ -248,6 +248,11 @@ try {
     assert.ok(pg.slice(1, -1).every(f => f[1] === 1 && f[2] === "7654321"));
     const rc = XLSX.utils.sheet_to_json(wb.Sheets.Rechazados, { header: 1, raw: true, defval: "" });
     assert.equal(rc[1][10], "cuenta inexistente");
+    const pdf = await descarga(A, () => A.click("#btnReportePdf"));
+    assert.equal(pdf.nombre, "reporte_pagos_todo.pdf");
+    assert.equal(pdf.bytes.subarray(0, 5).toString("latin1"), "%PDF-");
+    assert.ok(pdf.bytes.length > 20000, "PDF de " + pdf.bytes.length + " bytes"); // con el logo
+    log("reporte de pagos en PDF:", pdf.nombre, pdf.bytes.length, "bytes");
     log("reporte de pagos:", rep.nombre, "con", pg.length - 2, "documentos pagados por", pagadoTarjeta, "y", rc.length - 2, "rechazo");
   }
   await esperar(A, () => document.querySelectorAll("#nHist li").length >= 5);

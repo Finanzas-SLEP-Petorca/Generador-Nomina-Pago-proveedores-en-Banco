@@ -14,11 +14,12 @@ js/firebase.js              Inicialización, acceso por enlace al correo, firma 
 js/catalogos.js             Bancos, formas de pago, sectores y tipos de documento
 js/formato.js               Normalización, validaciones, armado de la nómina y .txt
 js/importar.js              Pegar desde Excel, importar xls/xlsx/csv/txt, planilla del banco
-js/excel.js                 Excel BancoEstado idéntico y plantilla de documentos
+js/excel.js                 Excel BancoEstado idéntico, plantilla de documentos y Excel del reporte de pagos
+js/pdf.js                   Reporte de pagos en PDF (A4 horizontal)
 js/datos.js                 Firestore: suscripciones, transacciones, historial, migración
 js/ui/*.js                  Pasos 1 a 4 y Configuración
 assets/                     Plantillas .xlsx vacías y logos (SLEP Petorca, Educación Pública, Mineduc, BancoEstado)
-vendor/                     SheetJS 0.18.5 y JSZip 3.10.1 (versiones fijadas)
+vendor/                     SheetJS 0.18.5, JSZip 3.10.1, jsPDF 4.2.1 y jsPDF-AutoTable 5.0.8 (versiones fijadas; jsPDF se carga solo al pedir un PDF)
 firestore/bloque_pago.rules Bloque de reglas del panel (con correos marcadores)
 referencia/                 Panel anterior (especificación viva)
 tests/                      Pruebas (no se publican)

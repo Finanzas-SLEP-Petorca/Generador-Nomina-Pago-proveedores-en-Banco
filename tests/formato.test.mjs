@@ -312,6 +312,31 @@ ok("abonos: importar la hoja DETALLE del banco y filas pegadas", () => {
   });
 }
 
+// Reporte en PDF: mismo contenido que el Excel (se revisa el texto de las páginas).
+{
+  const { jsPDF } = require(path.join(raiz, "vendor/jspdf-4.2.1.umd.min.js"));
+  const { autoTable } = await import(path.join(raiz, "vendor/jspdf-autotable-5.0.8.mjs"));
+  const P = await import(path.join(raiz, "js/pdf.js"));
+  const zlib = await import("node:zlib");
+  const pago = (rut, monto, estado, docs) => ({ rut, nombre: "BENEFICIARIO " + rut, banco: "012", cuenta: "1", monto, estado, motivo: estado === "rechazado" ? "cuenta cerrada" : "", reint: "", docs });
+  const muchos = Array.from({ length: 60 }, (_, i) => pago("111111111", 1000, "pagado", [{ ndoc: String(100 + i), tipo: "33", fecha: "01092026", monto: 1000 }]));
+  const nominas = [{ num: 7, estado: "cargada", fuente: "SEP", fechaCarga: "2026-09-29", fechaPago: "2026-09-30", operacion: "4455", cargadaPor: "juana.perez@sleppetorca.gob.cl", total: 60500, pagos: [...muchos, pago("123456785", 500, "rechazado", [{ ndoc: "9", tipo: "33", fecha: "01092026", monto: 500 }])] }];
+  const r = F.reportePagos(nominas, { desde: "2026-09-01", hasta: "2026-09-30" });
+  const buf = Buffer.from(P.pdfReporte(r, { desde: "2026-09-01", hasta: "2026-09-30", filtros: "Tipo: Todas · Fuente: Todas", generado: "30/09/2026 15:00", por: "Wilson Rojas" }, { jsPDF, autoTable }));
+  const bin = buf.toString("latin1");
+  let texto = "";
+  for (const m of bin.matchAll(/stream\r?\n/g)) { const ini = m.index + m[0].length, fin = bin.indexOf("endstream", ini); try { texto += zlib.inflateSync(buf.subarray(ini, fin)).toString("latin1") } catch { } }
+  texto = texto.replace(/\\([()\\])/g, "$1"); // el PDF escapa los paréntesis
+  ok("reporte de pagos: PDF con encabezado, totales, tablas en varias páginas y pie", () => {
+    assert.equal(bin.slice(0, 5), "%PDF-");
+    const paginas = (bin.match(/\/Type \/Page\b/g) || []).length;
+    assert.ok(paginas >= 2, "páginas: " + paginas);
+    for (const t of ["Reporte de pagos BancoEstado", "Período (fecha de pago): 01/09/2026 al 30/09/2026 · Tipo: Todas · Fuente: Todas", "Generado el 30/09/2026 15:00 por Wilson Rojas",
+      "$60.000", "Resumen por tipo y fuente", "Nóminas del período", "Detalle de lo pagado", "Rechazados", "cuenta cerrada", "4455", "Juana Perez", "Página 1 de " + paginas, "TOTAL PAGADO"])
+      assert.ok(texto.includes("(" + t + ")") || texto.includes(t), "falta en el PDF: " + t);
+  });
+}
+
 ok("index.html con las versiones de los archivos al día", () => {
   const { execFileSync } = require("node:child_process");
   execFileSync(process.execPath, [path.join(raiz, "tests/versionar.mjs"), "--revisar"], { stdio: "pipe" });

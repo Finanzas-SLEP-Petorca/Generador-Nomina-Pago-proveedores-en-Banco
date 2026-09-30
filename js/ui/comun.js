@@ -29,7 +29,7 @@ export async function accion(btn, fn) {
 }
 
 // ---------- descargas con Blob ----------
-const MIME = { txt: "text/plain;charset=utf-8", csv: "text/csv;charset=utf-8", json: "application/json", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" };
+const MIME = { txt: "text/plain;charset=utf-8", csv: "text/csv;charset=utf-8", json: "application/json", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", pdf: "application/pdf" };
 export function descargar(filename, data) {
   const ext = filename.split(".").pop().toLowerCase();
   const blob = new Blob([data], { type: MIME[ext] || "application/octet-stream" });

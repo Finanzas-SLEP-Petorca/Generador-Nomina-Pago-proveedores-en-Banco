@@ -21,16 +21,17 @@
   "./js/excel.js": "./js/excel.js?v=3978c92e6c",
   "./js/firebase-config.js": "./js/firebase-config.js?v=ffcd41549c",
   "./js/firebase.js": "./js/firebase.js?v=6eba6d64a6",
-  "./js/formato.js": "./js/formato.js?v=e319970b16",
+  "./js/formato.js": "./js/formato.js?v=f47dd47a55",
   "./js/importar.js": "./js/importar.js?v=51b36dd698",
+  "./js/pdf.js": "./js/pdf.js?v=5a96f99a26",
   "./js/ui/abonos.js": "./js/ui/abonos.js?v=e70bc36488",
-  "./js/ui/comun.js": "./js/ui/comun.js?v=d2fdaccfc5",
+  "./js/ui/comun.js": "./js/ui/comun.js?v=e11c0a4e36",
   "./js/ui/config.js": "./js/ui/config.js?v=fc62f90b44",
-  "./js/ui/guia.js": "./js/ui/guia.js?v=85724efd2d",
+  "./js/ui/guia.js": "./js/ui/guia.js?v=b23eeb1e90",
   "./js/ui/paso1.js": "./js/ui/paso1.js?v=8963c78bcc",
   "./js/ui/paso2.js": "./js/ui/paso2.js?v=fa97690d6b",
   "./js/ui/paso3.js": "./js/ui/paso3.js?v=aff19918ec",
-  "./js/ui/paso4.js": "./js/ui/paso4.js?v=7cd73fc6b7",
+  "./js/ui/paso4.js": "./js/ui/paso4.js?v=52da17eff4",
   "./js/ui/tema.js": "./js/ui/tema.js?v=e5740e8ffa"
  }
 }
@@ -395,7 +396,7 @@
   <div class="card" id="hDetail" hidden></div>
   <div class="card" id="cardReporte">
     <h2>Reporte de pagos</h2>
-    <p class="sub">Lo que BancoEstado ya pagó, según la fecha de pago de cada nómina cargada. El Excel trae el resumen por fuente, el detalle de lo pagado por documento o abono, y los rechazos del período.</p>
+    <p class="sub">Lo que BancoEstado ya pagó, según la fecha de pago de cada nómina cargada. El Excel y el PDF traen el resumen por fuente, las nóminas, el detalle de lo pagado por documento o abono, y los rechazos del período.</p>
     <div class="bar">
       <label class="toggle" style="color:var(--muted)">Desde <input type="date" id="rDesde"></label>
       <label class="toggle" style="color:var(--muted)">Hasta <input type="date" id="rHasta"></label>
@@ -408,7 +409,7 @@
       <thead><tr><th>Tipo</th><th>Fuente</th><th style="text-align:right">Nóminas</th><th style="text-align:right">Pagado</th><th style="text-align:right">Rechazado</th><th style="text-align:right">Pendiente de resultado</th></tr></thead>
       <tbody id="tbReporte"></tbody>
     </table></div>
-    <div class="row"><button class="btn primary" id="btnReporte">Descargar reporte (Excel)</button></div>
+    <div class="row"><button class="btn primary" id="btnReporte">Descargar reporte (Excel)</button><button class="btn primary" id="btnReportePdf">Descargar reporte (PDF)</button></div>
   </div>
 </section>
 

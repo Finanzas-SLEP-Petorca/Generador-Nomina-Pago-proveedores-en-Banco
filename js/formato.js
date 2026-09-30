@@ -326,38 +326,59 @@ export function reportePagos(nominas, { desde = "", hasta = "", fuente = "*", ti
   return { nominas: sel, resumen, tot, pagados, rechazados };
 }
 
-// Hojas del Excel del reporte (filas listas para SheetJS). Los montos van como { $: número }
-// para que el Excel les dé formato de pesos y se puedan sumar.
+// Tablas del reporte, comunes al Excel y al PDF. Los montos van como { $: número }
+// para que cada formato les dé su forma de pesos (y en el Excel se puedan sumar).
 const $m = v => ({ $: v });
-export function reporteHojas(rep, { desde = "", hasta = "", generado = "", por = "" } = {}) {
-  const periodo = desde || hasta ? `${desde ? fmtISO(desde) : "inicio"} al ${hasta ? fmtISO(hasta) : "hoy"}` : "todas las fechas";
-  const tipoN = n => n.tipo === "abonos" ? "Remuneraciones" : "Proveedores";
+const tipoRep = n => n.tipo === "abonos" ? "Remuneraciones" : "Proveedores";
+export const periodoReporte = (desde, hasta) => desde || hasta ? `${desde ? fmtISO(desde) : "inicio"} al ${hasta ? fmtISO(hasta) : "hoy"}` : "todas las fechas";
+
+export function reporteTablas(rep) {
   const t = rep.tot;
-  const resumen = [
-    ["REPORTE DE PAGOS BANCOESTADO"], ["Período (fecha de pago)", periodo], ["Generado", generado + (por ? " por " + por : "")], [],
-    ["TIPO", "FUENTE", "NÓMINAS", "PAGOS PAGADOS", "MONTO PAGADO", "RECHAZADOS", "MONTO RECHAZADO", "PENDIENTES", "MONTO PENDIENTE"],
-    ...rep.resumen.map(g => [g.tipo, g.fuente, g.nominas, g.nPagado, $m(g.pagado), g.nRechazado, $m(g.rechazado), g.nPendiente, $m(g.pendiente)]),
-    ["TOTAL", "", t.nominas, t.nPagado, $m(t.pagado), t.nRechazado, $m(t.rechazado), t.nPendiente, $m(t.pendiente)], [],
-    ["NÓMINAS DEL PERÍODO"],
-    ["N° NÓMINA", "N° BANCOESTADO", "TIPO", "FUENTE", "CONCEPTO", "FECHA CARGA", "FECHA PAGO", "CARGADA POR", "PAGOS", "TOTAL", "PAGADO", "RECHAZADO", "PENDIENTE"],
-    ...rep.nominas.map(n => {
-      const suma = e => n.pagos.filter(p => p.estado === e).reduce((s, p) => s + p.monto, 0);
-      return [n.num, S(n.operacion), tipoN(n), n.fuente, S(n.concepto), fmtISO(n.fechaCarga), fmtISO(n.fechaPago), S(n.cargadaPor), n.pagos.length, $m(n.total), $m(suma("pagado")), $m(suma("rechazado")), $m(suma("pendiente"))];
-    }),
-  ];
-  const pagado = [["FECHA PAGO", "N° NÓMINA", "N° BANCOESTADO", "TIPO", "FUENTE", "RUT", "BENEFICIARIO", "BANCO", "CUENTA", "N° DOC / CONCEPTO", "TIPO DOC", "FECHA DOC", "DC / GLOSA", "MONTO DOCUMENTO", "TOTAL PAGO"]];
+  const pagado = [];
   rep.pagados.forEach(({ n, p }) => p.docs.forEach((d, i) => pagado.push([
-    fmtISO(fechaReporte(n)), n.num, S(n.operacion), tipoN(n), n.fuente, fmtRut(p.rut), p.nombre, M_BANCO[p.banco] || S(p.banco), S(p.cuenta),
+    fmtISO(fechaReporte(n)), n.num, S(n.operacion), tipoRep(n), n.fuente, fmtRut(p.rut), p.nombre, M_BANCO[p.banco] || S(p.banco), S(p.cuenta),
     n.tipo === "abonos" ? S(d.concepto || n.concepto) : S(d.ndoc), n.tipo === "abonos" ? "" : (M_TIPO[d.tipo] ? d.tipo + " " + M_TIPO[d.tipo] : S(d.tipo)),
     n.tipo === "abonos" ? "" : fmtFecha(d.fecha), n.tipo === "abonos" ? S(d.glosa) : S(d.dc),
     $m(NC.has(d.tipo) ? -d.monto : d.monto), i === 0 ? $m(p.monto) : null])));
-  pagado.push(["TOTAL PAGADO", "", "", "", "", "", "", "", "", "", "", "", "", null, $m(t.pagado)]);
-  const rech = [["FECHA PAGO", "N° NÓMINA", "N° BANCOESTADO", "TIPO", "FUENTE", "RUT", "BENEFICIARIO", "BANCO", "CUENTA", "MONTO", "MOTIVO", "REINTEGRADO A PENDIENTES"]];
-  rep.rechazados.forEach(({ n, p }) => rech.push([fmtISO(fechaReporte(n)), n.num, S(n.operacion), tipoN(n), n.fuente, fmtRut(p.rut), p.nombre, M_BANCO[p.banco] || S(p.banco), S(p.cuenta), $m(p.monto), S(p.motivo), p.reint ? fmtISO(p.reint) : "No"]));
-  rech.push(["TOTAL RECHAZADO", "", "", "", "", "", "", "", "", $m(t.rechazado)]);
+  return {
+    resumen: {
+      head: ["TIPO", "FUENTE", "NÓMINAS", "PAGOS PAGADOS", "MONTO PAGADO", "RECHAZADOS", "MONTO RECHAZADO", "PENDIENTES", "MONTO PENDIENTE"],
+      body: rep.resumen.map(g => [g.tipo, g.fuente, g.nominas, g.nPagado, $m(g.pagado), g.nRechazado, $m(g.rechazado), g.nPendiente, $m(g.pendiente)]),
+      foot: ["TOTAL", "", t.nominas, t.nPagado, $m(t.pagado), t.nRechazado, $m(t.rechazado), t.nPendiente, $m(t.pendiente)],
+    },
+    nominas: {
+      head: ["N° NÓMINA", "N° BANCOESTADO", "TIPO", "FUENTE", "CONCEPTO", "FECHA CARGA", "FECHA PAGO", "CARGADA POR", "PAGOS", "TOTAL", "PAGADO", "RECHAZADO", "PENDIENTE"],
+      body: rep.nominas.map(n => {
+        const suma = e => n.pagos.filter(p => p.estado === e).reduce((s, p) => s + p.monto, 0);
+        return [n.num, S(n.operacion), tipoRep(n), n.fuente, S(n.concepto), fmtISO(n.fechaCarga), fmtISO(n.fechaPago), S(n.cargadaPor), n.pagos.length, $m(n.total), $m(suma("pagado")), $m(suma("rechazado")), $m(suma("pendiente"))];
+      }),
+    },
+    pagado: {
+      head: ["FECHA PAGO", "N° NÓMINA", "N° BANCOESTADO", "TIPO", "FUENTE", "RUT", "BENEFICIARIO", "BANCO", "CUENTA", "N° DOC / CONCEPTO", "TIPO DOC", "FECHA DOC", "DC / GLOSA", "MONTO DOCUMENTO", "TOTAL PAGO"],
+      body: pagado,
+      foot: ["TOTAL PAGADO", "", "", "", "", "", "", "", "", "", "", "", "", null, $m(t.pagado)],
+    },
+    rechazados: {
+      head: ["FECHA PAGO", "N° NÓMINA", "N° BANCOESTADO", "TIPO", "FUENTE", "RUT", "BENEFICIARIO", "BANCO", "CUENTA", "MONTO", "MOTIVO", "REINTEGRADO A PENDIENTES"],
+      body: rep.rechazados.map(({ n, p }) => [fmtISO(fechaReporte(n)), n.num, S(n.operacion), tipoRep(n), n.fuente, fmtRut(p.rut), p.nombre, M_BANCO[p.banco] || S(p.banco), S(p.cuenta), $m(p.monto), S(p.motivo), p.reint ? fmtISO(p.reint) : "No"]),
+      foot: ["TOTAL RECHAZADO", "", "", "", "", "", "", "", "", $m(t.rechazado)],
+    },
+  };
+}
+
+// Hojas del Excel del reporte (filas listas para SheetJS).
+// meta: { desde, hasta, filtros ("Tipo: … · Fuente: …"), generado, por }
+export function reporteHojas(rep, { desde = "", hasta = "", filtros = "", generado = "", por = "" } = {}) {
+  const T = reporteTablas(rep);
+  const tabla = x => [x.head, ...x.body, ...(x.foot ? [x.foot] : [])];
+  const resumen = [
+    ["REPORTE DE PAGOS BANCOESTADO"], ["Período (fecha de pago)", periodoReporte(desde, hasta)], ...(filtros ? [["Filtros", filtros]] : []), ["Generado", generado + (por ? " por " + por : "")], [],
+    ...tabla(T.resumen), [],
+    ["NÓMINAS DEL PERÍODO"], ...tabla(T.nominas),
+  ];
   return [
     { nombre: "Resumen", filas: resumen, anchos: [16, 16, 16, 16, 16, 14, 16, 22, 10, 14, 14, 14, 14] },
-    { nombre: "Pagado", filas: pagado, anchos: [11, 10, 14, 15, 12, 13, 34, 26, 14, 18, 22, 11, 14, 16, 14] },
-    { nombre: "Rechazados", filas: rech, anchos: [11, 10, 14, 15, 12, 13, 34, 26, 14, 14, 30, 14] },
+    { nombre: "Pagado", filas: tabla(T.pagado), anchos: [11, 10, 14, 15, 12, 13, 34, 26, 14, 18, 22, 11, 14, 16, 14] },
+    { nombre: "Rechazados", filas: tabla(T.rechazados), anchos: [11, 10, 14, 15, 12, 13, 34, 26, 14, 14, 30, 14] },
   ];
 }
