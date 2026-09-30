@@ -330,6 +330,12 @@ td input.inl{padding:4px 8px;font-size:13px;width:190px;background:var(--surface
   .guia-cuerpo{padding:4px 16px 20px}
 }
 .generada{width:min(620px,calc(100vw - 32px))}
+.tefdlg{width:min(860px,calc(100vw - 32px))}
+.tef-cuerpo{overflow-y:auto}
+.tef-cuerpo h3{margin:16px 0 8px}
+.tef-items{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+.tef-items label{display:flex;align-items:center;gap:10px;flex-direction:row;font-weight:400;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);cursor:pointer}
+.tef-items label input{width:auto;margin:0}
 .gen-cuerpo{padding:14px 22px 22px}
 .gen-cuerpo p{margin:0 0 12px}
 .gen-archivos{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:0 0 14px}

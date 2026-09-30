@@ -308,7 +308,7 @@ try {
     const XLSX = createRequire(import.meta.url)(REPO + "/vendor/xlsx-0.18.5.full.min.js");
     const P = ["33333333", "44444444", "55555555"].map(b => b + dv(b));
     const hoja = XLSX.utils.aoa_to_sheet([["", "", "Pago"], ["", "", "(7 Columnas)"], ["RUT", "NOMBRES Y APELLIDOS O RAZÓN SOCIAL", "EMAIL", "BANCO", "FORMA DE PAGO", "Nº DE CUENTA", "MONTO DEL PAGO"],
-      [P[0], "Víctor Núñez Pérez", "FINANZAS@SLEPPETORCA.GOB.CL", "012", "29", "", 150000], [P[1], "maría josé soto", "", "012", "30", "", 46290], [P[2], "PEDRO ROJAS", "", "001", "01", "987654", 27540]]);
+      [P[0], "Víctor Núñez Pérez", "FINANZAS@SLEPPETORCA.GOB.CL", "012", "29", "", 151515], [P[1], "maría josé soto", "", "012", "30", "", 42420], [P[2], "PEDRO ROJAS", "", "001", "01", "987654", 25250]]);
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, hoja, "DETALLE");
     const ruta = AQUI + "20260930 - REPOSICION FONDOS FIJOS EE.xlsx";
     writeFileSync(ruta, XLSX.write(wb, { type: "buffer", bookType: "xlsx" }));
@@ -322,11 +322,11 @@ try {
     await esperar(A, () => document.querySelectorAll("#abTabla tr .chk").length === 4);
     await A.click('#abFuentes tr[data-abf="GENERAL"]');
     await esperar(A, () => !document.getElementById("abBtnGenerar").disabled);
-    assert.equal(await A.textContent("#abTotal"), "$234.019");
+    assert.equal(await A.textContent("#abTotal"), "$219.185");
     const [abTxt, abXl] = await descargas(A, 2, () => A.click("#abBtnGenerar"));
     const hoyA = new Date(); const pref = hoyA.getFullYear() + String(hoyA.getMonth() + 1).padStart(2, "0") + String(hoyA.getDate()).padStart(2, "0");
     assert.equal(abTxt.nombre, pref + "_FONDOS_FIJOS_GENERAL.txt"); assert.equal(abXl.nombre, pref + "_FONDOS_FIJOS_GENERAL.xlsx");
-    assert.equal(abTxt.bytes.toString("utf8"), [[P[0], "VICTOR NUNEZ PEREZ", "FINANZAS@SLEPPETORCA.GOB.CL", "012", "29", "", "150000"], [P[1], "MARIA JOSE SOTO", "finanzas@sleppetorca.gob.cl", "012", "30", P[1].slice(0, -1), "46290"], [P[2], "PEDRO ROJAS", "finanzas@sleppetorca.gob.cl", "001", "01", "987654", "27540"]].map(f => f.join("\t")).join("\r\n") + "\r\n");
+    assert.equal(abTxt.bytes.toString("utf8"), [[P[0], "VICTOR NUNEZ PEREZ", "FINANZAS@SLEPPETORCA.GOB.CL", "012", "29", "", "151515"], [P[1], "MARIA JOSE SOTO", "finanzas@sleppetorca.gob.cl", "012", "30", P[1].slice(0, -1), "42420"], [P[2], "PEDRO ROJAS", "finanzas@sleppetorca.gob.cl", "001", "01", "987654", "25250"]].map(f => f.join("\t")).join("\r\n") + "\r\n");
     const leido = XLSX.read(abXl.bytes, { type: "buffer" });
     assert.equal(leido.SheetNames[0], "DETALLE"); assert.equal(leido.Sheets.DETALLE.B4.v, "VICTOR NUNEZ PEREZ"); assert.equal(leido.Sheets.DETALLE.F4?.v, undefined); // pago cash: cuenta en blanco
     await esperar(A, () => document.getElementById("dlgGenerada").open); await A.click("#genCerrar");
@@ -376,8 +376,8 @@ try {
     await esperar(A, () => document.querySelector("#hDetail .tag")?.textContent === "Pagada, 1 por cobrar en banco");
     assert.match(await toastTxt(A), /queda en «Por cobrar en banco»/);
     assert.equal(await A.$$eval("#hDetail [data-co]", s => s.length), 1); // solo el pago cash
-    assert.equal(await A.textContent('#bitStats .stat[data-k="cobro"] small'), "$150.000");
-    assert.ok((await A.textContent("#hDetail .due")).includes("por cobrar en banco $150.000"));
+    assert.equal(await A.textContent('#bitStats .stat[data-k="cobro"] small'), "$151.515");
+    assert.ok((await A.textContent("#hDetail .due")).includes("por cobrar en banco $151.515"));
     await A.selectOption('#hDetail [data-co="0"]', "cobrado");
     await esperar(A, () => /Procesada, 1 rechazo$/.test(document.querySelector("#hDetail .tag")?.textContent) && !!document.querySelector('#hDetail [data-cf="0"]'));
     assert.equal(await A.inputValue('#hDetail [data-cf="0"]'), iso(new Date()));
@@ -395,6 +395,96 @@ try {
     const navOk = await A.evaluate(() => { const n = document.querySelector(".steps"); return n.scrollWidth <= n.clientWidth + 1 });
     assert.ok(navOk, "las pestañas no caben en 1280 px");
     await A.screenshot({ path: AQUI + "remuneraciones.png", fullPage: true });
+
+    // ---------- transferencias electrónicas (pago directo, sin nómina) ----------
+    // Cuenta de origen asociada a su fuente en Configuración.
+    await A.click("#btnConfig");
+    await A.fill("#cCuentaNum", "1110-0000001"); await A.fill("#cCuentaNom", "Subvencion SEP"); await A.selectOption("#cCuentaFuente", "SEP");
+    await A.click("#btnAddCuenta");
+    await esperar(A, () => document.getElementById("tbCuentas").textContent.includes("11100000001"));
+    await A.click("#btnConfig");
+    await A.click('.steps button[data-step="4"]');
+    const pendDocs = await A.evaluate(async () => {
+      const fs = await import("https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js");
+      const q = await fs.getDocs(fs.collection(fs.getFirestore(), "pago_documentos"));
+      return q.docs.map(d => d.data()).map(d => ({ rut: d.rut, monto: d.monto, tipo: d.tipo, ndoc: d.ndoc }));
+    });
+    const rutDoc = pendDocs[0].rut, docsRut = pendDocs.filter(d => d.rut === rutDoc);
+    const sumaDocs = docsRut.reduce((a, d) => a + (["60", "61"].includes(d.tipo) ? -d.monto : d.monto), 0);
+    const cntDocsAntes = await A.textContent("#cntDocs");
+    // 1) Paga documentos pendientes del paso 2.
+    await A.click("#btnTef");
+    await esperar(A, () => document.getElementById("dlgTef").open);
+    await A.fill("#tNum", "900001"); await A.fill("#tIdTef", "5550001111"); await A.fill("#tHora", "16:48");
+    await A.selectOption("#tCuenta", "11100000001");
+    assert.equal(await A.inputValue("#tFuente"), "SEP"); // la fuente sale de la cuenta
+    await A.fill("#tRut", rutDoc); await A.dispatchEvent("#tRut", "change");
+    assert.notEqual(await A.inputValue("#tNombre"), ""); // desde el maestro de proveedores
+    await A.click('#tOrigen [data-origen="documentos"]');
+    await esperar(A, n => document.querySelectorAll("#tItems input").length === n, docsRut.length);
+    for (const c of await A.$$("#tItems input")) await c.check();
+    await A.fill("#tMonto", String(sumaDocs)); await A.dispatchEvent("#tMonto", "change");
+    assert.match(await A.textContent("#tSuma"), /calza con el monto/);
+    await A.fill("#tConcepto", "PAGO FACTURAS"); await A.fill("#tMensaje", "MEMO 1"); await A.fill("#tPreparo", "Usuario1"); await A.fill("#tAutorizo", "Admin1");
+    await A.click("#tRegistrar");
+    await esperar(A, () => !document.getElementById("dlgTef").open && /^Transferencia N° 900001/.test(document.querySelector("#hDetail h2")?.textContent || ""));
+    assert.equal(await A.textContent("#hDetail .tag"), "Transferencia pagada");
+    const numTef = await A.$eval("#hDetail", b => b.dataset.id);
+    await esperar(A, (id, n) => document.querySelector(`#tbBit tr[data-id="${id}"] td:nth-child(2)`)?.textContent === "900001" && document.getElementById("cntDocs").textContent !== n, numTef, cntDocsAntes);
+    assert.ok((await A.textContent("#hDetail .due")).includes("desde la cuenta 11100000001 (Subvencion SEP). ID TEF 5550001111."));
+    // El documento pagado por transferencia aparece en la trazabilidad del buscador.
+    await A.fill("#hSearch", docsRut[0].ndoc);
+    await esperar(A, (id) => [...document.querySelectorAll("#hTrace a")].some(a => a.dataset.go === id), numTef);
+    await A.fill("#hSearch", "");
+    log("transferencia N° 900001: paga", docsRut.length, "documentos pendientes por $" + sumaDocs.toLocaleString("es-CL"), "(registro N°", numTef + "); fuente desde la cuenta de origen");
+    // 2) Un N° de transferencia no se registra dos veces.
+    await A.click("#btnTef");
+    await A.fill("#tNum", "900001"); await A.selectOption("#tCuenta", "11100000001");
+    await A.fill("#tRut", P[2]); await A.dispatchEvent("#tRut", "change"); await A.fill("#tNombre", "OTRO"); await A.fill("#tMonto", "5"); await A.fill("#tConcepto", "X");
+    await A.click("#tRegistrar");
+    await esperar(A, () => document.getElementById("toast").textContent.includes("ya está registrada"));
+    // 3) Pago sin documento en el panel, desde otra cuenta; después se anula (registrado por error).
+    await A.fill("#tNum", "900002"); await A.selectOption("#tCuenta", "__otra"); await A.fill("#tCuentaOtra", "11100000002"); await A.selectOption("#tFuente", "GENERAL");
+    const rutSuelto = "77777777" + dv("77777777");
+    await A.fill("#tRut", rutSuelto); await A.dispatchEvent("#tRut", "change"); await A.fill("#tNombre", "EMPRESA SANITARIA DE PRUEBA");
+    await A.fill("#tMonto", "1000000"); await A.fill("#tConcepto", "AGUA EE"); await A.fill("#tMensaje", "MEMO 12");
+    await A.click("#tRegistrar");
+    await esperar(A, () => /^Transferencia N° 900002/.test(document.querySelector("#hDetail h2")?.textContent || ""));
+    assert.equal(await A.$('#hDetail [data-pr]'), null);
+    await A.fill("#tObsD", "comprobante en carpeta"); await A.click("#tGuardar");
+    await esperar(A, () => document.getElementById("toast").textContent === "Cambios guardados");
+    await A.click("#tAnular");
+    await esperar(A, () => document.querySelector("#hDetail .tag")?.textContent === "Anulada");
+    // 4) Paga un abono pendiente de Remuneraciones (el no cobrado que volvió a la pestaña).
+    const cntAbAntes = await A.textContent("#cntAbonos");
+    await A.click("#btnTef");
+    await A.fill("#tNum", "900003"); await A.selectOption("#tCuenta", "11100000001");
+    await A.fill("#tRut", P[0]); await A.dispatchEvent("#tRut", "change");
+    assert.equal(await A.inputValue("#tNombre"), "VICTOR NUNEZ PEREZ");
+    await A.click('#tOrigen [data-origen="abonos"]');
+    await A.fill("#tMonto", "151515"); await A.dispatchEvent("#tMonto", "change");
+    await A.click('#tOrigen [data-origen="abonos"]'); // vuelve a listar con el monto: el abono que calza queda marcado
+    await esperar(A, () => [...document.querySelectorAll("#tItems input")].some(i => i.checked));
+    await A.fill("#tConcepto", "REPOSICION FONDO FIJO");
+    await A.click("#tRegistrar");
+    await esperar(A, n => /^Transferencia N° 900003/.test(document.querySelector("#hDetail h2")?.textContent || "") && document.getElementById("cntAbonos").textContent !== n, cntAbAntes);
+    // Filtro por tipo y reporte de pagos solo de transferencias (la anulada no cuenta).
+    await A.selectOption("#hTipo", "transferencia"); await A.check("#hAnul");
+    assert.equal(await A.$$eval("#tbBit tr[data-id]", t => t.length), 3);
+    await A.uncheck("#hAnul");
+    assert.equal(await A.$$eval("#tbBit tr[data-id]", t => t.length), 2);
+    await A.selectOption("#hTipo", "*");
+    await A.click('[data-rper="todo"]'); await A.selectOption("#rTipo", "transferencia");
+    await esperar(A, t => document.querySelector("#rKpis .hero b").textContent === t, "$" + (sumaDocs + 151515).toLocaleString("es-CL"));
+    const repTef = await descarga(A, () => A.click("#btnReporte"));
+    {
+      const XLSX = createRequire(import.meta.url)(REPO + "/vendor/xlsx-0.18.5.full.min.js");
+      const pg = XLSX.utils.sheet_to_json(XLSX.read(repTef.bytes, { type: "buffer" }).Sheets.Pagado, { header: 1, raw: true, defval: "" });
+      assert.deepEqual([...new Set(pg.slice(1, -1).map(f => f[3]))], ["Transferencias"]);
+      assert.deepEqual([...new Set(pg.slice(1, -1).map(f => f[2]))].sort(), ["900001", "900003"]);
+    }
+    await A.selectOption("#rTipo", "*");
+    log("transferencias: pago sin documento anulado, abono de Remuneraciones pagado, filtro por tipo y reporte solo de transferencias");
   }
 
   // ---------- feriados ----------

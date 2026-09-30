@@ -17,7 +17,7 @@ js/importar.js              Pegar desde Excel, importar xls/xlsx/csv/txt, planil
 js/excel.js                 Excel BancoEstado idéntico, plantilla de documentos y Excel del reporte de pagos
 js/pdf.js                   Reporte de pagos en PDF (A4 horizontal)
 js/datos.js                 Firestore: suscripciones, transacciones, historial, migración
-js/ui/*.js                  Pasos 1 a 4 y Configuración
+js/ui/*.js                  Pasos 1 a 4, Remuneraciones, transferencias electrónicas y Configuración
 assets/                     Plantillas .xlsx vacías y logos (SLEP Petorca, Educación Pública, Mineduc, BancoEstado)
 vendor/                     SheetJS 0.18.5, JSZip 3.10.1, jsPDF 4.2.1 y jsPDF-AutoTable 5.0.8 (versiones fijadas; jsPDF se carga solo al pedir un PDF)
 firestore/bloque_pago.rules Bloque de reglas del panel (con correos marcadores)
@@ -111,11 +111,11 @@ Solo entran cuentas con correo verificado (`email_verified`); el acceso por enla
 
 | Colección | Contenido |
 |---|---|
-| `pago_config/general` | `fuentes`, `emailDefecto`, `feriados` (fechas ISO), `prefijoArchivo` (`AAAAMMDD` = fecha del día) |
+| `pago_config/general` | `fuentes`, `emailDefecto`, `feriados` (fechas ISO), `prefijoArchivo` (`AAAAMMDD` = fecha del día), `cuentas` (cuentas de origen de las transferencias: `{cuenta, nombre, fuente}`) |
 | `pago_config/contador` | `nextNum`: correlativo de nóminas |
 | `pago_proveedores/{rut}` | Maestro. Id = RUT sin puntos ni guion |
 | `pago_documentos/{id}` | Documentos pendientes, con `dc` y `hist` opcionales. El id ordena por fecha de ingreso, así la nómina respeta el orden de carga |
-| `pago_nominas/{num}` | Nóminas: `lineas` como mapas `{tipo, f}`, `pagos` con sus documentos, `fechaCarga`, `fechaPago` (día en que el banco paga la nómina; se mantiene aunque después haya rechazos), `creadaPor` y `cargadaPor` (quién generó y quién cargó; las reglas exigen que sea quien escribe). El resultado del banco se espera desde las 14:00 del día de pago |
+| `pago_nominas/{num}` | Nóminas: `lineas` como mapas `{tipo, f}`, `pagos` con sus documentos, `fechaCarga`, `fechaPago` (día en que el banco paga la nómina; se mantiene aunque después haya rechazos), `creadaPor` y `cargadaPor` (quién generó y quién cargó; las reglas exigen que sea quien escribe). El resultado del banco se espera desde las 14:00 del día de pago. `tipo`: sin valor (proveedores), `abonos` (remuneraciones) o `transferencia` |
 | `pago_abonos/{id}` | Abonos pendientes de la nómina de remuneraciones (7 columnas): RUT, nombre, email, banco, forma, cuenta, monto, fuente, concepto, glosa |
 | `pago_historial/{id}` | Bitácora de acciones; solo se agregan entradas |
 
@@ -129,6 +129,15 @@ Toda escritura lleva `updatedBy` (correo) y `updatedAt` (hora del servidor). El 
 Tamaño: una nómina ocupa cerca de 300 bytes por documento. Con 500 documentos pesa unos 150 KB; el límite de 1 MB de Firestore recién se acercaría con unos 3.000 documentos en una sola nómina.
 
 Las preferencias de interfaz quedan en `localStorage`: último paso abierto, filtros, fuente por defecto al pegar y "agrupar". Los datos no se guardan en el navegador: Firestore usa caché en memoria.
+
+## Transferencias electrónicas
+
+Los pagos directos por transferencia electrónica (sin nómina) se registran en la Bitácora con **Registrar transferencia**. El comprobante de BancoEstado trae los datos como imagen dentro del PDF, así que se copian a mano: N° de transferencia, ID TEF, fecha y hora, cuenta de origen, beneficiario, monto, concepto, mensaje y quién preparó y autorizó.
+
+- Queda en `pago_nominas` con `tipo: "transferencia"`, el mismo correlativo de las nóminas y estado `cargada`, con su único pago ya `pagado`: el banco la autoriza al instante. El N° de transferencia va en `operacion` (columna N° BancoEstado).
+- `origen` dice qué paga: `documentos` (pendientes del paso 2), `abonos` (de Remuneraciones) o `suelto` (nada cargado en el panel). Lo que paga sale de pendientes en la misma transacción, y vuelve si la transferencia se anula o se rechaza.
+- Cada cuenta de origen se asocia a su fuente en Configuración (`pago_config/general.cuentas`).
+- Reglas: una transferencia puede nacer `cargada` si `cargadaPor` es quien la registra y `cargadaAt` es la hora del servidor, y se puede anular (registrada por error). La configuración acepta el campo `cuentas`.
 
 ## Nómina de remuneraciones y abonos (7 columnas)
 

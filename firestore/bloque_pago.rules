@@ -39,13 +39,15 @@
       return /databases/$(database)/documents/pago_config/contador;
     }
 
-    // --- Configuración general: fuentes, email por defecto, feriados ---
+    // --- Configuración general: fuentes, email por defecto, feriados,
+    //     cuentas de origen de las transferencias ---
     match /pago_config/general {
       allow read: if pAllowed();
       allow create, update: if pAllowed() && pFirmado()
         && request.resource.data.keys().hasOnly(
-             ['fuentes', 'emailDefecto', 'feriados', 'prefijoArchivo', 'updatedAt', 'updatedBy'])
-        && request.resource.data.fuentes is list;
+             ['fuentes', 'emailDefecto', 'feriados', 'prefijoArchivo', 'cuentas', 'updatedAt', 'updatedBy'])
+        && request.resource.data.fuentes is list
+        && request.resource.data.get('cuentas', []) is list;
       allow delete: if false;
     }
 
@@ -109,10 +111,16 @@
     // --- Bitácora de nóminas (id del documento = número correlativo) ---
     match /pago_nominas/{nominaId} {
       allow read: if pAllowed();
-      // Solo nace en estado 'generada', con el número que reserva el contador
-      // en la misma transacción. Un id repetido no puede crearse dos veces.
+      // Nace en estado 'generada', con el número que reserva el contador en
+      // la misma transacción. Un id repetido no puede crearse dos veces.
+      // Una transferencia electrónica ya se pagó al registrarla: nace
+      // 'cargada', con quien la registra como cargadaPor.
       allow create: if pAllowed() && pFirmado()
-        && request.resource.data.estado == 'generada'
+        && (request.resource.data.estado == 'generada'
+            || (request.resource.data.get('tipo', '') == 'transferencia'
+                && request.resource.data.estado == 'cargada'
+                && request.resource.data.cargadaPor == pEmail()
+                && request.resource.data.cargadaAt == request.time))
         && request.resource.data.num is int
         && nominaId == string(request.resource.data.num)
         && getAfter(pContadorPath()).data.nextNum == request.resource.data.num + 1;
@@ -120,8 +128,10 @@
       allow update: if pAllowed() && pFirmado()
         && resource.data.estado != 'anulada'
         && request.resource.data.estado in ['generada', 'cargada', 'anulada']
-        // Solo se anula una nómina que aún no se cargó en el banco.
-        && (request.resource.data.estado != 'anulada' || resource.data.estado == 'generada')
+        // Solo se anula una nómina que aún no se cargó en el banco, o una
+        // transferencia registrada por error.
+        && (request.resource.data.estado != 'anulada' || resource.data.estado == 'generada'
+            || resource.data.get('tipo', '') == 'transferencia')
         // Quién cargó la nómina: solo quien escribe puede quedar como cargadaPor.
         && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['cargadaPor'])
             || request.resource.data.cargadaPor in [pEmail(), ''])

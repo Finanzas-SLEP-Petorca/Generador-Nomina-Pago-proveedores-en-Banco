@@ -11,6 +11,7 @@ import * as config from "./ui/config.js";
 import * as abonos from "./ui/abonos.js";
 import * as tema from "./ui/tema.js";
 import * as guia from "./ui/guia.js";
+import * as transferencia from "./ui/transferencia.js";
 import { activeFuentes, money, nombreDe } from "./formato.js";
 
 // ---------- pantallas ----------
@@ -69,7 +70,7 @@ vista.go = go;
 document.querySelectorAll(".steps button[data-step]").forEach(b => b.addEventListener("click", () => go(b.dataset.step)));
 // Configuración abre y cierra, volviendo al paso en que se estaba.
 $("btnConfig").onclick = () => { if ($("p5").classList.contains("on")) go(prefs.lastStep || "1"); else { prefs.lastStep = prefs.step; go(5) } };
-[tema, guia, paso1, paso2, paso3, abonos, paso4, config].forEach(m => m.init());
+[tema, guia, paso1, paso2, paso3, abonos, paso4, config, transferencia].forEach(m => m.init());
 
 let errorMostrado = null;
 alCambiar(() => {

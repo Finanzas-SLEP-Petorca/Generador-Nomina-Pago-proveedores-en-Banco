@@ -181,7 +181,7 @@ ok("resultado desde las 14:00 del día de pago", () => {
   assert.equal(f({ fechaCarga: "2026-10-09", fechaPago: "2026-10-12" }), "2026-10-13 14"); // pago feriado → hábil siguiente
   assert.equal(f({ fechaCarga: "2026-09-25" }), "2026-09-28 14");                          // sin fecha de pago: regla anterior
   assert.equal(F.esHabil("2026-09-26"), false); assert.equal(F.esHabil("2026-09-29"), true); assert.equal(F.esHabil("2026-10-12", fer), false);
-  assert.equal(F.nombreDe("juana.perez@sleppetorca.gob.cl"), "Juana Perez");
+  assert.equal(F.nombreDe("maria.perez@sleppetorca.gob.cl"), "Maria Perez");
 });
 
 ok("nombre de archivo", () => {
@@ -201,7 +201,7 @@ ok("nombre de archivo", () => {
 
 // ---------- remuneraciones y abonos (7 columnas) ----------
 ok("abonos: validación de la planilla de 7 columnas", () => {
-  const base = { rut: "11.111.111-1", nombre: "Víctor Muñoz Pérez", email: "", banco: "12", forma: "29", cuenta: "", monto: 150000 };
+  const base = { rut: "11.111.111-1", nombre: "Víctor Muñoz Pérez", email: "", banco: "12", forma: "29", cuenta: "", monto: 151515 };
   let c = F.checkAbono(base, "finanzas@sleppetorca.gob.cl");
   assert.deepEqual(c.e, []); assert.equal(c.out.nombre, "VICTOR MUNOZ PEREZ"); assert.equal(c.out.cuenta, ""); // pago cash: cuenta en blanco assert.equal(c.out.banco, "012");
   assert.equal(c.out.email, "finanzas@sleppetorca.gob.cl");
@@ -239,7 +239,7 @@ ok("abonos: nómina, .txt de 7 columnas y avisos", () => {
 
 ok("abonos: importar la hoja DETALLE del banco y filas pegadas", () => {
   const detalle = [["", "", "Pago", "", "", "", "Versión 1.1"], ["", "", "(7 Columnas)"], ["RUT", "NOMBRES Y APELLIDOS O RAZÓN SOCIAL", "EMAIL", "BANCO", "FORMA DE PAGO", "Nº DE CUENTA", "MONTO DEL PAGO"],
-    [111111111, "José Ñuñez", "FINANZAS@SLEPPETORCA.GOB.CL", "012", "29", "", 150000], ["12345678-5", "ANA", "", 1, 1, 12345678901, "$1.500"], ["", "", "", "", "", "", ""]];
+    [111111111, "José Ñuñez", "FINANZAS@SLEPPETORCA.GOB.CL", "012", "29", "", 151515], ["12345678-5", "ANA", "", 1, 1, 12345678901, "$1.500"], ["", "", "", "", "", "", ""]];
   const f = I.ingestAbonos(detalle);
   assert.equal(f.length, 2);
   const p = I.prepararAbonos(f, { fuentes: ["GENERAL"], defFuente: "GENERAL", concepto: "FONDOS FIJOS" });
@@ -316,28 +316,55 @@ ok("abonos: importar la hoja DETALLE del banco y filas pegadas", () => {
 {
   const E = await import(path.join(raiz, "js/excel.js"));
   const caja = (rut, monto, cobro = "", extra = {}) => ({ rut, nombre: "DIRECTOR " + rut, banco: "012", forma: "20", cuenta: "", monto, estado: "pagado", motivo: "", reint: "", cobro, cobroFecha: cobro ? "2026-10-02" : "", docs: [{ monto, concepto: "FONDOS FIJOS", glosa: "" }], ...extra });
-  const nom = pagos => ({ num: 9, tipo: "abonos", concepto: "FONDOS FIJOS", estado: "cargada", fuente: "GENERAL", fechaCarga: "2026-09-29", fechaPago: "2026-09-30", operacion: "100001", total: pagos.reduce((a, p) => a + p.monto, 0), pagos });
+  const nom = pagos => ({ num: 9, tipo: "abonos", concepto: "FONDOS FIJOS", estado: "cargada", fuente: "GENERAL", fechaCarga: "2026-09-29", fechaPago: "2026-09-30", operacion: "700001", total: pagos.reduce((a, p) => a + p.monto, 0), pagos });
   ok("pago cash: la nómina queda por cobrar en banco hasta que se cobra o se devuelve", () => {
     const transf = { rut: "111111111", nombre: "X", banco: "012", forma: "01", cuenta: "1", monto: 5, estado: "pagado", docs: [] };
-    assert.equal(F.nomStatus(nom([caja("222222222", 139502), caja("44444445", 137380, "cobrado")])).t, "Pagada, 1 por cobrar en banco");
-    assert.equal(F.nomStatus(nom([caja("222222222", 139502), caja("44444445", 137380, "cobrado")])).k, "cobro");
-    assert.equal(F.nomStatus(nom([caja("222222222", 139502, "cobrado"), transf])).t, "Procesada, todo pagado");
-    assert.equal(F.nomStatus(nom([caja("222222222", 139502, "devuelto"), caja("44444445", 137380, "cobrado")])).t, "Procesada, 1 por reintegrar");
-    assert.equal(F.nomStatus(nom([caja("222222222", 139502, "devuelto", { reint: "2026-10-03" })])).t, "Procesada, 1 no cobrado");
+    assert.equal(F.nomStatus(nom([caja("900000014", 150000), caja("90000020", 120000, "cobrado")])).t, "Pagada, 1 por cobrar en banco");
+    assert.equal(F.nomStatus(nom([caja("900000014", 150000), caja("90000020", 120000, "cobrado")])).k, "cobro");
+    assert.equal(F.nomStatus(nom([caja("900000014", 150000, "cobrado"), transf])).t, "Procesada, todo pagado");
+    assert.equal(F.nomStatus(nom([caja("900000014", 150000, "devuelto"), caja("90000020", 120000, "cobrado")])).t, "Procesada, 1 por reintegrar");
+    assert.equal(F.nomStatus(nom([caja("900000014", 150000, "devuelto", { reint: "2026-10-03" })])).t, "Procesada, 1 no cobrado");
     // Una transferencia (forma 01) o un pago de proveedores no tiene cobro en banco.
     assert.equal(F.nomStatus(nom([transf])).k, "ok");
-    assert.equal(F.nomStatus({ ...nom([caja("222222222", 1)]), tipo: undefined }).k, "ok");
+    assert.equal(F.nomStatus({ ...nom([caja("900000014", 1)]), tipo: undefined }).k, "ok");
   });
-  const r = F.reportePagos([nom([caja("222222222", 139502), caja("44444445", 137380, "cobrado"), caja("333333333", 101000, "devuelto")])], {});
+  const r = F.reportePagos([nom([caja("900000014", 150000), caja("90000020", 120000, "cobrado"), caja("900000030", 100000, "devuelto")])], {});
   ok("pago cash en el reporte: por cobrar aparte, el no cobrado va con los rechazados", () => {
-    assert.deepEqual([r.tot.pagado, r.tot.nPagado, r.tot.porCobrar, r.tot.rechazado, r.tot.nRechazado], [276882, 2, 139502, 101000, 1]);
+    assert.deepEqual([r.tot.pagado, r.tot.nPagado, r.tot.porCobrar, r.tot.rechazado, r.tot.nRechazado], [270000, 2, 150000, 100000, 1]);
     const T = F.reporteTablas(r);
     assert.deepEqual(T.pagado.body.map(f => f[15]), ["Pendiente de cobro", "Cobrado 02/10/2026"]);
-    assert.equal(T.pagado.foot[15], "Por cobrar $139.502");
+    assert.equal(T.pagado.foot[15], "Por cobrar $150.000");
     assert.equal(T.rechazados.body[0][10], "No cobrado en banco, devuelto a la cuenta el 02/10/2026");
-    assert.deepEqual(T.resumen.foot[9], { $: 139502 });
+    assert.deepEqual(T.resumen.foot[9], { $: 150000 });
     const wb = XLSX.read(E.libroReporte(F.reporteHojas(r, {})), { type: "array" });
     assert.equal(XLSX.utils.sheet_to_json(wb.Sheets.Pagado, { header: 1, defval: "" })[1][15], "Pendiente de cobro");
+  });
+}
+
+// Transferencias electrónicas: tercer tipo de la bitácora, nacen pagadas.
+{
+  const tef = (origen, docs, extra = {}) => ({ num: 12, tipo: "transferencia", origen, estado: "cargada", fuente: "JUNJI", fechaCarga: "2026-09-30", fechaPago: "2026-09-30", operacion: "8800001", concepto: "AGUA JUNJI", total: 250000,
+    pagos: [{ rut: "965432108", nombre: "SANITARIA DE PRUEBA", banco: "012", cuenta: "99988877766", monto: 250000, estado: "pagado", motivo: "", reint: "", docs }], ...extra });
+  const conDoc = tef("documentos", [{ docId: "d1", ndoc: "5501", tipo: "33", fecha: "01092026", monto: 250000, dc: "" }]);
+  const suelto = tef("suelto", [{ monto: 250000, concepto: "AGUA JUNJI", glosa: "MEMO 12" }]);
+  const abono = { ...tef("abonos", [{ abonoId: "a1", monto: 1000000, concepto: "REMUNERACIONES", glosa: "" }]), num: 13, fuente: "GENERAL", operacion: "8800002", total: 1000000 };
+  abono.pagos[0] = { ...abono.pagos[0], rut: "900000049", nombre: "PERSONA", monto: 1000000 };
+  ok("transferencias: tipo, estado 'Transferencia pagada' e índice de documentos ya pagados", () => {
+    assert.deepEqual([conDoc, suelto, abono, { tipo: "abonos" }, {}].map(F.tipoDe), ["transferencia", "transferencia", "transferencia", "abonos", "proveedores"]);
+    assert.deepEqual([conDoc, suelto, abono].map(F.conDocumentos), [true, false, false]);
+    assert.deepEqual([conDoc, suelto, abono].map(F.conAbonos), [false, false, true]);
+    assert.equal(F.nomStatus(conDoc).t, "Transferencia pagada");
+    assert.equal(F.nomStatus({ ...suelto, pagos: [{ ...suelto.pagos[0], estado: "rechazado" }] }).k, "reintegrar");
+    // La factura pagada por transferencia avisa si se vuelve a cargar; la transferencia suelta no entra al índice.
+    assert.deepEqual(F.activeIndex([conDoc, suelto]), { "965432108|33|5501": "12 (pagado)" });
+    assert.deepEqual(F.activeIndex([{ ...conDoc, estado: "anulada" }]), {});
+  });
+  ok("transferencias en el reporte: filtro por tipo y detalle por documento o concepto", () => {
+    const r = F.reportePagos([conDoc, suelto, abono, { num: 1, estado: "cargada", fuente: "SEP", fechaPago: "2026-09-30", total: 5, pagos: [{ rut: "111111111", nombre: "X", banco: "012", cuenta: "1", monto: 5, estado: "pagado", docs: [{ ndoc: "1", tipo: "33", fecha: "01092026", monto: 5 }] }] }], { tipo: "transferencia" });
+    assert.deepEqual(r.nominas.map(n => n.num), [12, 12, 13]);
+    assert.deepEqual(r.resumen.map(g => [g.tipo, g.fuente, g.nominas, g.pagado]), [["Transferencias", "GENERAL", 1, 1000000], ["Transferencias", "JUNJI", 2, 500000]]);
+    const T = F.reporteTablas(r);
+    assert.deepEqual(T.pagado.body.map(f => [f[2], f[3], f[9], f[12]]), [["8800001", "Transferencias", "5501", ""], ["8800001", "Transferencias", "AGUA JUNJI", "MEMO 12"], ["8800002", "Transferencias", "REMUNERACIONES", ""]]);
   });
 }
 
@@ -349,7 +376,7 @@ ok("abonos: importar la hoja DETALLE del banco y filas pegadas", () => {
   const zlib = await import("node:zlib");
   const pago = (rut, monto, estado, docs) => ({ rut, nombre: "BENEFICIARIO " + rut, banco: "012", cuenta: "1", monto, estado, motivo: estado === "rechazado" ? "cuenta cerrada" : "", reint: "", docs });
   const muchos = Array.from({ length: 60 }, (_, i) => pago("111111111", 1000, "pagado", [{ ndoc: String(100 + i), tipo: "33", fecha: "01092026", monto: 1000 }]));
-  const nominas = [{ num: 7, estado: "cargada", fuente: "SEP", fechaCarga: "2026-09-29", fechaPago: "2026-09-30", operacion: "4455", cargadaPor: "juana.perez@sleppetorca.gob.cl", total: 60500, pagos: [...muchos, pago("123456785", 500, "rechazado", [{ ndoc: "9", tipo: "33", fecha: "01092026", monto: 500 }])] }];
+  const nominas = [{ num: 7, estado: "cargada", fuente: "SEP", fechaCarga: "2026-09-29", fechaPago: "2026-09-30", operacion: "4455", cargadaPor: "maria.perez@sleppetorca.gob.cl", total: 60500, pagos: [...muchos, pago("123456785", 500, "rechazado", [{ ndoc: "9", tipo: "33", fecha: "01092026", monto: 500 }])] }];
   const r = F.reportePagos(nominas, { desde: "2026-09-01", hasta: "2026-09-30" });
   const buf = Buffer.from(P.pdfReporte(r, { desde: "2026-09-01", hasta: "2026-09-30", filtros: "Tipo: Todas · Fuente: Todas", generado: "30/09/2026 15:00", por: "Wilson Rojas" }, { jsPDF, autoTable }));
   const bin = buf.toString("latin1");
@@ -361,7 +388,7 @@ ok("abonos: importar la hoja DETALLE del banco y filas pegadas", () => {
     const paginas = (bin.match(/\/Type \/Page\b/g) || []).length;
     assert.ok(paginas >= 2, "páginas: " + paginas);
     for (const t of ["Reporte de pagos BancoEstado", "Período (fecha de pago): 01/09/2026 al 30/09/2026 · Tipo: Todas · Fuente: Todas", "Generado el 30/09/2026 15:00 por Wilson Rojas",
-      "$60.000", "Resumen por tipo y fuente", "Nóminas del período", "Detalle de lo pagado", "Rechazados", "cuenta cerrada", "4455", "Juana Perez", "Página 1 de " + paginas, "TOTAL PAGADO"])
+      "$60.000", "Resumen por tipo y fuente", "Nóminas del período", "Detalle de lo pagado", "Rechazados", "cuenta cerrada", "4455", "Maria Perez", "Página 1 de " + paginas, "TOTAL PAGADO"])
       assert.ok(texto.includes("(" + t + ")") || texto.includes(t), "falta en el PDF: " + t);
   });
 }

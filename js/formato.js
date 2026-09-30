@@ -70,7 +70,7 @@ export function resultadoDesde(n, feriados = []) {
   while (!esHabil(todayISO(t), feriados)) t.setDate(t.getDate() + 1);
   return t;
 }
-// Nombre para mostrar a partir del correo: juana.perez@… → Juana Perez.
+// Nombre para mostrar a partir del correo: maria.perez@… → Maria Perez.
 export const nombreDe = email => S(email).split("@")[0].split(/[._-]+/).filter(Boolean).map(w => w[0].toUpperCase() + w.slice(1)).join(" ");
 export function fmtDue(t) { return DIAS[t.getDay()] + " " + two(t.getDate()) + "/" + two(t.getMonth() + 1) + " 14:00" }
 
@@ -116,9 +116,18 @@ export function checkDoc(d) {
 
 // Documentos que ya están en una nómina activa (no anulada) y no rechazados.
 // Clave rut|tipo|ndoc → "N" o "N (pagado)".
+// Tipo de registro de la bitácora: nómina de proveedores, nómina de remuneraciones
+// (abonos) o transferencia electrónica. Una transferencia paga documentos del
+// paso 2, un abono de Remuneraciones o nada del panel (pago suelto): n.origen.
+export const tipoDe = n => n.tipo === "abonos" ? "abonos" : n.tipo === "transferencia" ? "transferencia" : "proveedores";
+export const TIPOS_REGISTRO = { proveedores: "Proveedores", abonos: "Remuneraciones", transferencia: "Transferencias" };
+// Ítems con forma de documento (N° doc, tipo, fecha, DC) o de abono (concepto y glosa).
+export const conDocumentos = n => tipoDe(n) === "proveedores" || (tipoDe(n) === "transferencia" && n.origen === "documentos");
+export const conAbonos = n => tipoDe(n) === "abonos" || (tipoDe(n) === "transferencia" && n.origen === "abonos");
+
 export function activeIndex(nominas) {
   const m = {};
-  nominas.forEach(n => { if (n.estado === "anulada" || n.tipo === "abonos") return; n.pagos.forEach(p => { if (p.estado === "rechazado") return; p.docs.forEach(d => { m[p.rut + "|" + d.tipo + "|" + d.ndoc] = n.num + (p.estado === "pagado" ? " (pagado)" : "") }) }) });
+  nominas.forEach(n => { if (n.estado === "anulada" || !conDocumentos(n)) return; n.pagos.forEach(p => { if (p.estado === "rechazado") return; p.docs.forEach(d => { m[p.rut + "|" + d.tipo + "|" + d.ndoc] = n.num + (p.estado === "pagado" ? " (pagado)" : "") }) }) });
   return m;
 }
 
@@ -213,7 +222,7 @@ export function nomStatus(n, feriados = [], ahora = Date.now()) {
   if (sinR) return { k: "reintegrar", t: dev.length ? `Procesada, ${sinR} por reintegrar` : `Procesada, ${partes}, ${sinR} por reintegrar`, c: "wrn" };
   if (xCobrar) return { k: "cobro", t: `Pagada, ${xCobrar} por cobrar en banco`, c: "wrn" };
   if (partes) return { k: "ok", t: `Procesada, ${partes}`, c: "okk" };
-  return { k: "ok", t: "Procesada, todo pagado", c: "okk" };
+  return { k: "ok", t: tipoDe(n) === "transferencia" ? "Transferencia pagada" : "Procesada, todo pagado", c: "okk" };
 }
 
 // =====================================================================
@@ -319,13 +328,13 @@ export const fechaReporte = n => n.fechaPago || n.fechaCarga || "";
 export function reportePagos(nominas, { desde = "", hasta = "", fuente = "*", tipo = "*" } = {}) {
   const sel = nominas.filter(n => n.estado === "cargada"
     && (fuente === "*" || n.fuente === fuente)
-    && (tipo === "*" || (tipo === "abonos") === (n.tipo === "abonos"))
+    && (tipo === "*" || tipo === tipoDe(n))
     && (!desde || fechaReporte(n) >= desde) && (!hasta || fechaReporte(n) <= hasta))
     .sort((a, b) => fechaReporte(a).localeCompare(fechaReporte(b)) || a.num - b.num);
   const cero = () => ({ nominas: 0, pagado: 0, nPagado: 0, rechazado: 0, nRechazado: 0, pendiente: 0, nPendiente: 0, porCobrar: 0, nPorCobrar: 0 });
   const tot = cero(), grupos = {}, pagados = [], rechazados = [];
   sel.forEach(n => {
-    const tipoN = n.tipo === "abonos" ? "Remuneraciones" : "Proveedores";
+    const tipoN = TIPOS_REGISTRO[tipoDe(n)];
     const g = grupos[tipoN + "|" + n.fuente] = grupos[tipoN + "|" + n.fuente] || { tipo: tipoN, fuente: n.fuente, ...cero() };
     g.nominas++; tot.nominas++;
     n.pagos.forEach(p => {
@@ -344,7 +353,7 @@ export function reportePagos(nominas, { desde = "", hasta = "", fuente = "*", ti
 // Tablas del reporte, comunes al Excel y al PDF. Los montos van como { $: número }
 // para que cada formato les dé su forma de pesos (y en el Excel se puedan sumar).
 const $m = v => ({ $: v });
-const tipoRep = n => n.tipo === "abonos" ? "Remuneraciones" : "Proveedores";
+const tipoRep = n => TIPOS_REGISTRO[tipoDe(n)];
 export const periodoReporte = (desde, hasta) => desde || hasta ? `${desde ? fmtISO(desde) : "inicio"} al ${hasta ? fmtISO(hasta) : "hoy"}` : "todas las fechas";
 
 const estadoCobro = (n, p) => !esCobroCaja(n, p) ? "" : p.cobro === "cobrado" ? "Cobrado" + (p.cobroFecha ? " " + fmtISO(p.cobroFecha) : "") : "Pendiente de cobro";
@@ -354,8 +363,8 @@ export function reporteTablas(rep) {
   const pagado = [];
   rep.pagados.forEach(({ n, p }) => p.docs.forEach((d, i) => pagado.push([
     fmtISO(fechaReporte(n)), n.num, S(n.operacion), tipoRep(n), n.fuente, fmtRut(p.rut), p.nombre, M_BANCO[p.banco] || S(p.banco), S(p.cuenta),
-    n.tipo === "abonos" ? S(d.concepto || n.concepto) : S(d.ndoc), n.tipo === "abonos" ? "" : (M_TIPO[d.tipo] ? d.tipo + " " + M_TIPO[d.tipo] : S(d.tipo)),
-    n.tipo === "abonos" ? "" : fmtFecha(d.fecha), n.tipo === "abonos" ? S(d.glosa) : S(d.dc),
+    !conDocumentos(n) ? S(d.concepto || n.concepto) : S(d.ndoc), !conDocumentos(n) ? "" : (M_TIPO[d.tipo] ? d.tipo + " " + M_TIPO[d.tipo] : S(d.tipo)),
+    !conDocumentos(n) ? "" : fmtFecha(d.fecha), !conDocumentos(n) ? S(d.glosa) : S(d.dc),
     $m(NC.has(d.tipo) ? -d.monto : d.monto), i === 0 ? $m(p.monto) : null, i === 0 ? estadoCobro(n, p) : ""])));
   return {
     resumen: {

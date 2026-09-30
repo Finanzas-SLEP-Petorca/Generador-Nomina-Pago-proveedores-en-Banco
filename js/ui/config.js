@@ -3,7 +3,7 @@
 
 import { S, parseFecha, fmtISO, expandPrefijo, quitarFuenteFinal, today } from "../formato.js";
 import { st, guardarConfig, exportarRespaldo, leerRespaldo, analizarRespaldo, importarRespaldo } from "../datos.js";
-import { $, esc, toast, accion, descargar, mensajeError } from "./comun.js";
+import { $, esc, toast, accion, descargar, mensajeError, fOpts } from "./comun.js";
 import { DIAS } from "../catalogos.js";
 
 let analisis = null;
@@ -27,6 +27,13 @@ export function init() {
     if (malas.length) { toast("Fecha no válida: " + malas[0]); return }
     const lista = [...new Set([...st.config.feriados, ...nuevas])].sort();
     accion($("btnAddFeriado"), async () => { await guardarConfig({ feriados: lista }); $("cFeriado").value = ""; toast(nuevas.length + " feriado" + (nuevas.length > 1 ? "s" : "") + " guardado" + (nuevas.length > 1 ? "s" : "")) });
+  };
+  // Cuentas de origen de las transferencias electrónicas, con su fuente.
+  $("btnAddCuenta").onclick = () => {
+    const cuenta = S($("cCuentaNum").value).replace(/[^0-9]/g, ""), nombre = S($("cCuentaNom").value), fuente = $("cCuentaFuente").value;
+    if (!cuenta) { toast("Escribe el N° de cuenta"); return }
+    if (st.config.cuentas.some(c => c.cuenta === cuenta)) { toast("La cuenta " + cuenta + " ya está"); return }
+    accion($("btnAddCuenta"), async () => { await guardarConfig({ cuentas: [...st.config.cuentas, { cuenta, nombre, fuente }] }); $("cCuentaNum").value = ""; $("cCuentaNom").value = ""; toast("Cuenta " + cuenta + " asociada a " + fuente) });
   };
   $("btnBackup2").onclick = () => descargar("respaldo_panel_pago_" + today() + ".json", JSON.stringify(exportarRespaldo(), null, 1));
   $("fileRespaldo").addEventListener("change", async e => {
@@ -70,6 +77,12 @@ export function renderConfig() {
   const dia = iso => { const [y, m, d] = iso.split("-").map(Number); return DIAS[new Date(y, m - 1, d).getDay()] };
   $("feriados").innerHTML = fer.length ? fer.map(f => `<span class="chip">${dia(f)} ${fmtISO(f)}<button data-rmfer="${f}" aria-label="Quitar feriado ${fmtISO(f)}" title="Quitar feriado">×</button></span>`).join("") : `<span class="hint">Sin feriados cargados: el resultado del banco solo salta sábados y domingos.</span>`;
   $("feriados").querySelectorAll("[data-rmfer]").forEach(b => b.onclick = () => accion(b, () => guardarConfig({ feriados: st.config.feriados.filter(x => x !== b.dataset.rmfer) })));
+  const cuentas = st.config.cuentas;
+  $("tbCuentas").innerHTML = cuentas.length ? cuentas.map((c, i) => `<tr><td class="mono">${esc(c.cuenta)}</td><td>${esc(c.nombre)}</td><td><select class="inl" data-cfu="${i}" aria-label="Fuente de la cuenta ${esc(c.cuenta)}">${st.config.fuentes.includes(c.fuente) ? "" : `<option value="${esc(c.fuente)}" selected>${esc(c.fuente)} (ya no existe)</option>`}${fOpts(c.fuente)}</select></td><td><button class="btn small danger" data-crm="${i}">Quitar</button></td></tr>`).join("")
+    : `<tr><td colspan="4" class="empty">Aún no hay cuentas. Agrega las cuentas desde las que se hacen transferencias (aparecen en el comprobante como “Cuenta Origen”).</td></tr>`;
+  $("tbCuentas").querySelectorAll("[data-cfu]").forEach(sel => sel.onchange = () => accion(null, () => guardarConfig({ cuentas: cuentas.map((c, i) => i === +sel.dataset.cfu ? { ...c, fuente: sel.value } : c) })));
+  $("tbCuentas").querySelectorAll("[data-crm]").forEach(b => b.onclick = () => accion(b, () => guardarConfig({ cuentas: cuentas.filter((_, i) => i !== +b.dataset.crm) })));
+  if (document.activeElement !== $("cCuentaFuente")) $("cCuentaFuente").innerHTML = fOpts($("cCuentaFuente").value || st.config.fuentes[0]);
   $("cardMigracion").hidden = !st.admin;
   $("sesionInfo").textContent = `Sesión: ${st.email}${st.admin ? " (administrador)" : ""}.`;
 }

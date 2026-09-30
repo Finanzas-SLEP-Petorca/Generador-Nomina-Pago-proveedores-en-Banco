@@ -112,6 +112,28 @@ test("una nómina solo nace generada, con el número que reserva el contador", a
   await assertFails(b.commit());
 });
 
+test("una transferencia electrónica nace cargada, firmada por quien la registra, y se puede anular", async () => {
+  const u = db(USUARIO);
+  const tef = (num, extra = {}) => ({ num, tipo: "transferencia", fuente: "JUNJI", archivo: "", estado: "cargada", creadaAt: serverTimestamp(), creadaPor: USUARIO, cargadaPor: USUARIO, cargadaAt: serverTimestamp(), fechaCarga: "2026-09-30", fechaPago: "2026-09-30", operacion: "8800001", total: 250000, lineas: [], pagos: [], ...firma(USUARIO), ...extra });
+  const conContador = (fs, n, nom) => { const b = writeBatch(fs); b.set(doc(fs, "pago_config/contador"), { nextNum: n + 1, ...firma(USUARIO) }); b.set(doc(fs, "pago_nominas", String(n)), nom); return b.commit() };
+  // Sin tipo transferencia no puede nacer cargada; tampoco a nombre de otro ni sin la hora del servidor.
+  await assertFails(conContador(u, 1, tef(1, { tipo: "abonos" })));
+  await assertFails(conContador(u, 1, tef(1, { cargadaPor: ADMIN })));
+  await assertFails(conContador(u, 1, tef(1, { cargadaAt: null })));
+  await assertFails(conContador(u, 1, tef(1, { estado: "anulada" })));
+  await assertSucceeds(conContador(u, 1, tef(1)));
+  // El contador sigue siendo el mismo: la nómina siguiente es la 2.
+  assert.equal(await generar(u, USUARIO), 2);
+  // Una transferencia se puede anular (registrada por error); una nómina cargada no.
+  await assertSucceeds(updateDoc(doc(u, "pago_nominas/1"), { estado: "anulada", ...firma(USUARIO) }));
+  await assertFails(updateDoc(doc(u, "pago_nominas/1"), { obs: "x", ...firma(USUARIO) }));
+  await updateDoc(doc(u, "pago_nominas/2"), { estado: "cargada", cargadaPor: USUARIO, cargadaAt: serverTimestamp(), ...firma(USUARIO) });
+  await assertFails(updateDoc(doc(u, "pago_nominas/2"), { estado: "anulada", ...firma(USUARIO) }));
+  // Cuentas de origen en la configuración: lista.
+  await assertSucceeds(setDoc(doc(u, "pago_config/general"), { fuentes: ["JUNJI"], cuentas: [{ cuenta: "11100000001", nombre: "Subvencion JUNJI", fuente: "JUNJI" }], ...firma(USUARIO) }));
+  await assertFails(setDoc(doc(u, "pago_config/general"), { fuentes: ["JUNJI"], cuentas: "11100000001", ...firma(USUARIO) }));
+});
+
 test("dos usuarios generando a la vez no obtienen el mismo número", async () => {
   const a = db(USUARIO), b = db(ADMIN);
   const nums = await Promise.all(Array.from({ length: 6 }, (_, i) => generar(i % 2 ? a : b, i % 2 ? USUARIO : ADMIN)));

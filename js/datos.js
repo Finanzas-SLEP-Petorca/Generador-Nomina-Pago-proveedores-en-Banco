@@ -4,7 +4,7 @@
 
 import { db, fs, firma } from "./firebase.js";
 import { FUENTES_DEFECTO, EMAIL_DEFECTO, PREFIJO_DEFECTO } from "./catalogos.js";
-import { S, checkProv, checkAbono, money, fmtRut, fmtISO, todayISO, normDc, esCobroCaja, noCobrado } from "./formato.js";
+import { S, checkProv, checkAbono, money, fmtRut, fmtISO, todayISO, normDc, esCobroCaja, noCobrado, tipoDe, conDocumentos, conAbonos } from "./formato.js";
 
 const { doc, collection, onSnapshot, query, where, runTransaction, writeBatch, serverTimestamp, Timestamp, getDoc, deleteDoc } = fs;
 
@@ -16,7 +16,7 @@ const refContador = () => doc(db, C.config, "contador");
 export const st = {
   email: "", admin: false,
   maestro: {}, docs: [], nominas: [], abonos: [], abonosError: null,
-  config: { fuentes: [...FUENTES_DEFECTO], emailDefecto: EMAIL_DEFECTO, feriados: [], prefijoArchivo: PREFIJO_DEFECTO },
+  config: { fuentes: [...FUENTES_DEFECTO], emailDefecto: EMAIL_DEFECTO, feriados: [], prefijoArchivo: PREFIJO_DEFECTO, cuentas: [] },
   contadorExiste: false, nextNum: 1,
   listo: { prov: false, docs: false, nom: false, general: false, contador: false, abonos: false },
   error: null
@@ -74,7 +74,9 @@ export function suscribir() {
       fuentes: Array.isArray(d.fuentes) && d.fuentes.length ? d.fuentes : [...FUENTES_DEFECTO],
       emailDefecto: d.emailDefecto != null ? d.emailDefecto : EMAIL_DEFECTO,
       feriados: Array.isArray(d.feriados) ? d.feriados : [],
-      prefijoArchivo: d.prefijoArchivo || PREFIJO_DEFECTO
+      prefijoArchivo: d.prefijoArchivo || PREFIJO_DEFECTO,
+      // Cuentas de origen de las transferencias: [{ cuenta, nombre, fuente }]
+      cuentas: Array.isArray(d.cuentas) ? d.cuentas.filter(c => c && c.cuenta) : []
     };
     st.listo.general = true; avisar();
   }, err));
@@ -113,11 +115,13 @@ async function enLotes(ops, alAvanzar) {
 }
 
 const configCompleta = parcial => ({ ...st.config, ...parcial });
+// Las cuentas de origen solo se escriben si hay alguna: así la configuración se
+// sigue guardando aunque las reglas que las permiten aún no estén publicadas.
+const datosConfig = c => ({ fuentes: c.fuentes, emailDefecto: c.emailDefecto, feriados: c.feriados, prefijoArchivo: c.prefijoArchivo, ...(c.cuentas && c.cuentas.length ? { cuentas: c.cuentas } : {}), ...f() });
 export async function guardarConfig(parcial) {
-  const c = configCompleta(parcial);
-  await fs.setDoc(refGeneral(), { fuentes: c.fuentes, emailDefecto: c.emailDefecto, feriados: c.feriados, prefijoArchivo: c.prefijoArchivo, ...f() });
+  await fs.setDoc(refGeneral(), datosConfig(configCompleta(parcial)));
 }
-const opConfig = parcial => b => { const c = configCompleta(parcial); b.set(refGeneral(), { fuentes: c.fuentes, emailDefecto: c.emailDefecto, feriados: c.feriados, prefijoArchivo: c.prefijoArchivo, ...f() }) };
+const opConfig = parcial => b => { b.set(refGeneral(), datosConfig(configCompleta(parcial))) };
 
 // ---------- proveedores ----------
 const CAMPOS_PROV = ["nombre", "email", "banco", "forma", "cuenta", "sector"];
@@ -366,7 +370,8 @@ const abonoDevuelto = (n, p, d, texto) => { const o = { rut: p.rut, nombre: p.no
 // Devuelve los ítems de un pago al lugar que corresponde según el tipo de nómina.
 const devolver = (n, pagos, texto) => {
   const out = { docs: [], abonos: [] };
-  pagos.forEach(p => p.docs.forEach(d => n.tipo === "abonos" ? out.abonos.push(abonoDevuelto(n, p, d, texto)) : out.docs.push(docDevuelto(n, p, d, texto))));
+  // Una transferencia sin documento ni abono del panel (pago suelto) no devuelve nada.
+  pagos.forEach(p => p.docs.forEach(d => conAbonos(n) ? out.abonos.push(abonoDevuelto(n, p, d, texto)) : conDocumentos(n) ? out.docs.push(docDevuelto(n, p, d, texto)) : null));
   return out;
 };
 const docDevuelto = (n, p, d, texto) => { const o = { rut: p.rut, fecha: d.fecha, monto: d.monto, ndoc: d.ndoc, tipo: d.tipo, fuente: n.fuente, sel: true, hist: texto }; if (d.dc) o.dc = d.dc; return o };
@@ -422,19 +427,74 @@ export const volverPendientes = (id, i) => modificarNomina(id, n => {
   const pagos = n.pagos.map(p => ({ ...p })); const p = pagos[i];
   const dev = noCobrado(n, p);
   if ((p.estado !== "rechazado" && !dev) || p.reint) throw new Conflicto("Este pago no está rechazado ni devuelto, o ya se reintegró");
+  if (!conDocumentos(n) && !conAbonos(n)) throw new Conflicto("Esta transferencia no pagaba documentos ni abonos del panel: no hay nada que volver a pendientes");
   p.reint = todayISO();
-  const texto = dev ? `No cobrado en banco en nómina N° ${n.num} (devuelto a la cuenta)` : `Rechazado en nómina N° ${n.num}${p.motivo ? ": " + p.motivo : ""}`;
-  const que = n.tipo === "abonos" ? "abono" : "documento";
+  const donde = tipoDe(n) === "transferencia" ? `transferencia N° ${n.operacion || n.num}` : `nómina N° ${n.num}`;
+  const texto = dev ? `No cobrado en banco en nómina N° ${n.num} (devuelto a la cuenta)` : `Rechazado en ${donde}${p.motivo ? ": " + p.motivo : ""}`;
+  const que = conAbonos(n) ? "abono" : conDocumentos(n) ? "documento" : "pago";
   return {
     cambios: { pagos }, ...devolver(n, [p], texto),
     hist: [hist(dev ? "reintegrar pago no cobrado" : "reintegrar pago rechazado", refN(n), `${p.docs.length} ${que}${p.docs.length > 1 ? "s" : ""} de ${fmtRut(p.rut)} ${p.nombre} vuelven a pendientes (${money(p.monto)})`, { estado: p.estado, motivo: p.motivo, cobro: p.cobro || "", reint: "" }, { reint: p.reint })]
   };
 });
 export const anularNomina = id => modificarNomina(id, n => {
-  if (n.estado !== "generada") throw new Conflicto("Solo se anula una nómina que no se ha cargado en el banco");
-  const texto = `Viene de la nómina N° ${n.num} anulada`;
+  const tef = tipoDe(n) === "transferencia";
+  if (!tef && n.estado !== "generada") throw new Conflicto("Solo se anula una nómina que no se ha cargado en el banco");
+  // Si un pago ya volvió a pendientes, anular lo devolvería dos veces.
+  if (tef && n.pagos.some(p => p.reint)) throw new Conflicto("Esta transferencia ya devolvió su pago a pendientes; no se puede anular");
+  const texto = tef ? `Viene de la transferencia N° ${n.operacion || n.num} anulada` : `Viene de la nómina N° ${n.num} anulada`;
   const vuelta = devolver(n, n.pagos, texto), cuantos = vuelta.docs.length + vuelta.abonos.length;
-  return { cambios: { estado: "anulada" }, ...vuelta, hist: [hist("anular nómina", refN(n), `N° ${n.num} ${n.fuente} anulada; ${cuantos} ${n.tipo === "abonos" ? "abonos" : "documentos"} vuelven a pendientes`, { estado: "generada" }, { estado: "anulada" })] };
+  const que = conAbonos(n) ? "abonos" : "documentos";
+  return { cambios: { estado: "anulada" }, ...vuelta, hist: [hist(tef ? "anular transferencia" : "anular nómina", refN(n), tef ? `Transferencia N° ${n.operacion} (registro ${n.num}) anulada${cuantos ? `; ${cuantos} ${que} vuelven a pendientes` : ""}` : `N° ${n.num} ${n.fuente} anulada; ${cuantos} ${que} vuelven a pendientes`, { estado: n.estado }, { estado: "anulada" })] };
+});
+
+// ---------- transferencias electrónicas ----------
+// t = { origen: "documentos"|"abonos"|"suelto", ids, fuente, operacion, idTef, fecha, hora,
+//       cuentaOrigen, cuentaNombre, concepto, mensaje, preparo, autorizo, obs, monto,
+//       benef: { rut, nombre, email, banco, forma, cuenta } }
+// Toma el mismo correlativo que las nóminas y nace pagada (el banco la autoriza al instante).
+export const registrarTransferencia = t => conReintento(al => runTransaction(db, async tx => {
+  const cSnap = await tx.get(refContador());
+  const num = cSnap.exists() ? cSnap.data().nextNum : 1;
+  al(num);
+  const nRef = doc(db, C.nom, String(num));
+  const ref = id => t.origen === "abonos" ? refAbono(id) : refDoc(id);
+  const [nSnap, iSnaps] = await Promise.all([tx.get(nRef), Promise.all((t.origen === "suelto" ? [] : t.ids).map(id => tx.get(ref(id))))]);
+  if (nSnap.exists()) throw new Conflicto(`El registro N° ${num} ya existe. Recarga la página e inténtalo de nuevo.`);
+  const movidos = iSnaps.filter(s => !s.exists() || s.data().rut !== t.benef.rut).length;
+  if (movidos) throw new Conflicto(`${movidos} ${t.origen === "abonos" ? "abono" : "documento"}${movidos > 1 ? "s" : ""} ya no está${movidos > 1 ? "n" : ""} pendiente${movidos > 1 ? "s" : ""} (otro usuario lo movió, quitó o incluyó en una nómina). No se registró la transferencia; revisa y vuelve a intentarlo.`);
+  const items = iSnaps.map((s, i) => ({ id: t.ids[i], ...s.data() }));
+  const docs = t.origen === "documentos" ? items.map(d => ({ docId: d.id, fecha: d.fecha, monto: d.monto, ndoc: d.ndoc, tipo: d.tipo, dc: d.dc || "" }))
+    : t.origen === "abonos" ? items.map(a => ({ abonoId: a.id, monto: a.monto, concepto: a.concepto || "", glosa: a.glosa || "" }))
+    : [{ monto: t.monto, concepto: S(t.concepto), glosa: S(t.mensaje) }];
+  const b = t.benef;
+  const nomina = {
+    num, tipo: "transferencia", origen: t.origen, fuente: t.fuente, archivo: "", estado: "cargada",
+    creadaAt: serverTimestamp(), creadaPor: st.email, cargadaPor: st.email, cargadaAt: serverTimestamp(),
+    fechaCarga: t.fecha, fechaPago: t.fecha, horaTef: S(t.hora), operacion: S(t.operacion), idTef: S(t.idTef),
+    cuentaOrigen: S(t.cuentaOrigen), cuentaNombre: S(t.cuentaNombre), concepto: S(t.concepto), mensaje: S(t.mensaje),
+    preparo: S(t.preparo), autorizo: S(t.autorizo), obs: S(t.obs), total: t.monto, lineas: [],
+    pagos: [{ rut: b.rut, nombre: S(b.nombre), email: S(b.email), banco: S(b.banco), forma: S(b.forma), cuenta: S(b.cuenta), monto: t.monto, estado: "pagado", motivo: "", reint: "", docs }],
+    ...f()
+  };
+  if (cSnap.exists()) tx.update(refContador(), { nextNum: num + 1, ...f() });
+  else tx.set(refContador(), { nextNum: num + 1, ...f() });
+  tx.set(nRef, nomina);
+  items.forEach(it => tx.delete(ref(it.id)));
+  const que = t.origen === "documentos" ? `, ${docs.length} documento${docs.length > 1 ? "s" : ""}` : t.origen === "abonos" ? `, ${docs.length} abono${docs.length > 1 ? "s" : ""}` : ", pago sin documento en el panel";
+  tx.set(refHist(), hist("registrar transferencia", "nomina:" + num, `Transferencia N° ${nomina.operacion} (registro ${num}) del ${fmtISO(t.fecha)}${t.hora ? " " + t.hora : ""}, ${t.fuente}: ${fmtRut(b.rut)} ${nomina.pagos[0].nombre}, ${money(t.monto)}${que}. ${nomina.concepto}`, null, { operacion: nomina.operacion, idTef: nomina.idTef, total: t.monto, origen: t.origen, tipo: "transferencia" }));
+  return nomina;
+}));
+
+// Datos de la transferencia que se pueden corregir después de registrarla.
+const CAMPOS_TEF = { operacion: "N° de transferencia", idTef: "ID TEF", horaTef: "hora", concepto: "concepto", mensaje: "mensaje", preparo: "preparó", autorizo: "autorizó", obs: "observación" };
+export const editarTransferencia = (id, datos) => modificarNomina(id, n => {
+  if (tipoDe(n) !== "transferencia") throw new Conflicto("No es una transferencia");
+  const antes = Object.fromEntries(Object.keys(CAMPOS_TEF).map(k => [k, S(n[k])]));
+  const despues = Object.fromEntries(Object.keys(CAMPOS_TEF).map(k => [k, k in datos ? S(datos[k]) : antes[k]]));
+  const cambiados = Object.keys(CAMPOS_TEF).filter(k => antes[k] !== despues[k]);
+  if (!cambiados.length) return { cambios: {} };
+  return { cambios: despues, hist: [hist("editar transferencia", refN(n), "Cambia " + cambiados.map(k => CAMPOS_TEF[k]).join(", "), antes, despues)] };
 });
 
 // ---------- respaldo JSON (exportar e importar) ----------
@@ -447,7 +507,7 @@ export function exportarRespaldo() {
     docs: st.docs.map(d => ({ ...limpia(d) })),
     abonos: st.abonos.map(a => ({ ...limpia(a) })),
     nominas: st.nominas.map(n => ({ ...limpia(n), creadaAt: iso(n.creadaAt) })),
-    config: { fuentes: st.config.fuentes, email: st.config.emailDefecto, feriados: st.config.feriados, prefijoArchivo: st.config.prefijoArchivo, nextNum: st.nextNum }
+    config: { fuentes: st.config.fuentes, email: st.config.emailDefecto, feriados: st.config.feriados, prefijoArchivo: st.config.prefijoArchivo, cuentas: st.config.cuentas, nextNum: st.nextNum }
   };
 }
 
