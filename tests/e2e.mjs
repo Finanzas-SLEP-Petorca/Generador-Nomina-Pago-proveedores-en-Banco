@@ -340,6 +340,72 @@ try {
     await A.fill("#nOper", "7654322");
     await A.click("#nCargar");
     await esperar(A, () => document.querySelector("#hDetail .tag")?.textContent.includes("Cargada"));
+
+    // ---------- resultado desde el reporte de BancoEstado ----------
+    // Se arma el mismo "Detalle Nómina" que descarga el banco: cabecera con el
+    // Nº de nómina y una fila por pago. Aquí solo trae el segundo pago, así que
+    // los otros dos siguen pendientes y el resto de la prueba no cambia.
+    const XL = createRequire(import.meta.url)(REPO + "/vendor/xlsx-0.18.5.full.min.js");
+    const reporteBanco = (oper, filas, total = 46290) => {
+      const wb = XL.utils.book_new();
+      XL.utils.book_append_sheet(wb, XL.utils.aoa_to_sheet([
+        ["Mis Nóminas - Remuneraciones - Ver Nómina"], [], ["Fecha : hoy"], [], ["Detalle Nómina"],
+        ["Convenio", "SLEP PRUEBA REMUNERACIONES(REM-1)", "Nº Nómina", oper],
+        ["Nombre Nómina", "PRUEBA", "Monto Total $", "$" + total.toLocaleString("es-CL")],
+        ["Cantidad Pagos", String(filas.length), "Fecha Pago", "30/09/2026"],
+        ["Concepto Pago", "Otros", "Estado Nómina Pagos", "Aceptada"], [],
+        ["Rut", "Nombre", "Fecha Abono", "Forma Abono", "Banco", "Código Propio", "N° Cuenta", "Estado Abono", "Motivo", "Monto Abono"],
+        ...filas
+      ]), "DetalleNomina");
+      return Buffer.from(XL.write(wb, { type: "buffer", bookType: "xlsx" }));
+    };
+    const filaBanco = (rut, nombre, monto, estado, motivo = "") =>
+      [rut, nombre, "30/09/2026", "Abono en Cuenta Corriente / Cuenta Vista", "BANCOESTADO", "", "123456", estado, motivo, "$ " + monto.toLocaleString("es-CL")];
+
+    // Un archivo de otra nómina no se aplica: se dice de cuál es.
+    await A.setInputFiles("#fReporteBanco", { name: "otra.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: reporteBanco("9999999", [filaBanco(P[1], "MARIA JOSE SOTO", 46290, "Pagado")]) });
+    await esperar(A, () => !document.getElementById("cardConciliar").hidden);
+    assert.match(await A.textContent("#cardConciliar"), /Ninguna nómina de la bitácora tiene el N° BancoEstado 9999999/);
+    assert.equal(await A.$("#concAplicar"), null);            // sin nada que aplicar no hay botón
+    // Un monto que no calza con el del banco se avisa y no se toca.
+    await A.setInputFiles("#fReporteBanco", { name: "monto.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: reporteBanco("7654322", [filaBanco(P[1], "MARIA JOSE SOTO", 99999, "Pagado")]) });
+    await esperar(A, () => document.getElementById("cardConciliar").textContent.includes("$99.999"));
+    assert.match(await A.textContent("#cardConciliar"), /\$99\.999.*\$46\.290|\$46\.290.*\$99\.999/s);
+    assert.equal(await A.$("#concAplicar"), null);
+    // Un estado que el panel no reconoce queda para registrar a mano.
+    await A.setInputFiles("#fReporteBanco", { name: "raro.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: reporteBanco("7654322", [filaBanco(P[1], "MARIA JOSE SOTO", 46290, "En Proceso")]) });
+    await esperar(A, () => document.getElementById("cardConciliar").textContent.includes("En Proceso"));
+    assert.equal(await A.$("#concAplicar"), null);
+    // El archivo correcto: vista previa con el cambio, y se aplica.
+    await A.setInputFiles("#fReporteBanco", { name: "bueno.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: reporteBanco("7654322", [filaBanco(P[1], "MARIA JOSE SOTO", 46290, "Pagado")]) });
+    await esperar(A, () => !!document.getElementById("concAplicar"));
+    assert.match(await A.textContent("#concAplicar"), /Registrar 1 resultado$/);
+    assert.match(await A.textContent("#cardConciliar"), /no lo informa/);          // los otros dos pagos
+    await A.screenshot({ path: AQUI + "reporte_banco.png", fullPage: false });
+    await A.click("#concCancelar");                                                // cancelar no escribe nada
+    await esperar(A, () => document.getElementById("cardConciliar").hidden);
+    assert.equal(await A.$eval('#hDetail [data-pe="1"]', s => s.value), "pendiente");
+    await A.setInputFiles("#fReporteBanco", { name: "bueno.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: reporteBanco("7654322", [filaBanco(P[1], "MARIA JOSE SOTO", 46290, "Pagado")]) });
+    await esperar(A, () => !!document.getElementById("concAplicar"));
+    await A.click("#concAplicar");
+    await esperar(A, () => document.getElementById("cardConciliar").hidden);
+    await esperar(A, () => document.querySelector('#hDetail [data-pe="1"]')?.value === "pagado");
+    assert.match(await toastTxt(A), /1 resultado registrado desde el reporte del banco/);
+    // Volver a subirlo no vuelve a escribir: el pago ya quedó registrado así.
+    await A.setInputFiles("#fReporteBanco", { name: "bueno.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: reporteBanco("7654322", [filaBanco(P[1], "MARIA JOSE SOTO", 46290, "Pagado")]) });
+    await esperar(A, () => !document.getElementById("cardConciliar").hidden);
+    assert.equal(await A.$("#concAplicar"), null);
+    assert.match(await A.textContent("#cardConciliar"), /ya estaba registrado así/);
+    await A.click("#concCerrar");
+    const hBanco = await A.evaluate(async () => {
+      const fs = await import("https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js");
+      const q = await fs.getDocs(fs.query(fs.collection(fs.getFirestore(), "pago_historial"), fs.where("accion", "==", "resultado del banco")));
+      return q.docs.map(d => d.data().detalle);
+    });
+    assert.equal(hBanco.length, 1);
+    assert.match(hBanco[0], /archivo bueno\.xlsx: 1 pagado \(\$46\.290\)/);
+    log("reporte del banco: rechaza el archivo de otra nómina, avisa montos y estados que no calzan, la vista previa no escribe y al aplicar queda en el historial");
+
     await A.selectOption('#hDetail [data-pe="2"]', "rechazado");
     await esperar(A, () => document.querySelector('#hDetail [data-pr="2"]'));
     await A.click('#hDetail [data-pr="2"]');

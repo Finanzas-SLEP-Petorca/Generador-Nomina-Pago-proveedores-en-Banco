@@ -347,6 +347,9 @@ export const generarNominaAbonos = (r, archivo, concepto) => conReintento(al => 
 
 // Modifica una nómina leyendo su estado actual dentro de una transacción.
 // fn(n) devuelve { cambios, hist: [..], docs: [..documentos a devolver] }.
+// Si fn devuelve `salida`, eso es lo que recibe quien llamó (lo usa la carga
+// del reporte del banco para informar lo que no pudo aplicar); si no, la
+// nómina tal como estaba antes del cambio.
 async function modificarNomina(id, fn) {
   return runTransaction(db, async tx => {
     const ref = doc(db, C.nom, id); const s = await tx.get(ref);
@@ -358,7 +361,7 @@ async function modificarNomina(id, fn) {
     (r.docs || []).forEach(d => tx.set(refDoc(nuevoIdDoc()), { ...d, createdAt: serverTimestamp(), createdBy: st.email, ...f() }));
     (r.abonos || []).forEach(a => tx.set(refAbono(nuevoIdDoc()), { ...a, createdAt: serverTimestamp(), createdBy: st.email, ...f() }));
     (r.hist || []).forEach(h => tx.set(refHist(), h));
-    return n;
+    return r.salida !== undefined ? r.salida : n;
   });
 }
 // Abono que vuelve a pendientes (rechazo o nómina anulada), con sus datos bancarios.
@@ -404,6 +407,41 @@ export const pagarPendientes = id => modificarNomina(id, n => {
   const pend = n.pagos.filter(p => p.estado === "pendiente");
   const pagos = n.pagos.map(p => p.estado === "pendiente" ? { ...p, estado: "pagado" } : p);
   return { cambios: { pagos }, hist: [hist("resultado de pago", refN(n), `${pend.length} pagos pendientes marcados como pagados (${money(pend.reduce((s, p) => s + p.monto, 0))})`, { estado: "pendiente", pagos: pend.map(p => p.rut) }, { estado: "pagado" })] };
+});
+// Resultados leídos del reporte de BancoEstado, todos los de una nómina en una
+// sola transacción. `resultados` viene de conciliar() y se vuelve a validar aquí
+// contra la nómina recién leída: entre la vista previa y el botón Aplicar, otra
+// persona pudo registrar un resultado o reintegrar un pago. Lo que ya no calce
+// se omite y se informa; nunca se pisa lo que otro escribió.
+export const aplicarResultadosBanco = (id, resultados, archivo) => modificarNomina(id, n => {
+  if (n.estado !== "cargada") throw new Conflicto(`La nómina N° ${n.num} no está cargada`);
+  const pagos = n.pagos.map(p => ({ ...p }));
+  const hechos = [], omitidos = [];
+  resultados.forEach(r => {
+    const p = pagos.find(x => x.rut === r.rut && x.monto === r.monto);
+    if (!p) { omitidos.push(`${fmtRut(r.rut)}: el pago ya no está en la nómina`); return }
+    if (p.reint) { omitidos.push(`${fmtRut(r.rut)}: se reintegró a pendientes mientras revisabas`); return }
+    const motivo = r.estado === "rechazado" ? S(r.motivo) : "";
+    if (p.estado === r.estado && S(p.motivo) === motivo) return;          // ya estaba así
+    if (p.estado !== "pendiente") { omitidos.push(`${fmtRut(r.rut)}: otro usuario ya lo registró con otro resultado`); return }
+    const antes = { estado: p.estado, motivo: p.motivo };
+    p.estado = r.estado; p.motivo = motivo;
+    // El cobro en banco solo existe para un pago cash o vale vista pagado.
+    if (r.estado !== "pagado" && (p.cobro || p.cobroFecha)) { p.cobro = ""; p.cobroFecha = "" }
+    hechos.push({ p, antes });
+  });
+  if (!hechos.length) return { cambios: {}, salida: { aplicados: 0, omitidos } };
+  const pgd = hechos.filter(h => h.p.estado === "pagado"), rch = hechos.filter(h => h.p.estado === "rechazado");
+  const suma = l => money(l.reduce((s, h) => s + h.p.monto, 0));
+  const resumen = [pgd.length ? `${pgd.length} pagado${pgd.length > 1 ? "s" : ""} (${suma(pgd)})` : "",
+                   rch.length ? `${rch.length} rechazado${rch.length > 1 ? "s" : ""} (${suma(rch)})` : ""].filter(Boolean).join(", ");
+  return {
+    cambios: { pagos }, salida: { aplicados: hechos.length, omitidos },
+    hist: [
+      hist("resultado del banco", refN(n), `Del reporte de BancoEstado${archivo ? ", archivo " + archivo : ""}: ${resumen}`, { archivo: S(archivo) }, { pagos: hechos.length }),
+      ...hechos.map(h => hist("resultado de pago", refN(n), `${fmtRut(h.p.rut)} ${h.p.nombre} (${money(h.p.monto)}): ${h.antes.estado} → ${h.p.estado}${h.p.motivo ? ", motivo: " + h.p.motivo : ""} (reporte del banco)`, h.antes, { estado: h.p.estado, motivo: h.p.motivo }))
+    ]
+  };
 });
 // Cobro en banco de un pago cash o vale vista pagado: "" (pendiente de cobro), "cobrado" o "devuelto".
 export const cobroPago = (id, i, cobro, fecha) => modificarNomina(id, n => {

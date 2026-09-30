@@ -8,7 +8,7 @@
 <link rel="icon" type="image/png" href="assets/logo_slep_petorca.png">
 <!-- Tema elegido (Claro/Oscuro/Sistema) aplicado antes de pintar, para no parpadear -->
 <script>try{var t=localStorage.getItem("pago.tema");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
-<link rel="stylesheet" href="css/panel.css?v=786775eb70">
+<link rel="stylesheet" href="css/panel.css?v=cbd89a39f3">
 <!-- SheetJS y JSZip con versión fijada (copias en vendor/) -->
 <script src="vendor/xlsx-0.18.5.full.min.js" defer></script>
 <script src="vendor/jszip-3.10.1.min.js" defer></script>
@@ -17,7 +17,8 @@
  "imports": {
   "./js/app.js": "./js/app.js?v=77ba9d558b",
   "./js/catalogos.js": "./js/catalogos.js?v=10b7750732",
-  "./js/datos.js": "./js/datos.js?v=ac8ebe44a0",
+  "./js/conciliar.js": "./js/conciliar.js?v=8a50d1346c",
+  "./js/datos.js": "./js/datos.js?v=f3fc0be2d8",
   "./js/excel.js": "./js/excel.js?v=3978c92e6c",
   "./js/firebase-config.js": "./js/firebase-config.js?v=ffcd41549c",
   "./js/firebase.js": "./js/firebase.js?v=6eba6d64a6",
@@ -27,11 +28,11 @@
   "./js/ui/abonos.js": "./js/ui/abonos.js?v=e70bc36488",
   "./js/ui/comun.js": "./js/ui/comun.js?v=e11c0a4e36",
   "./js/ui/config.js": "./js/ui/config.js?v=fc62f90b44",
-  "./js/ui/guia.js": "./js/ui/guia.js?v=0cd8645f5a",
+  "./js/ui/guia.js": "./js/ui/guia.js?v=935ad5cd37",
   "./js/ui/paso1.js": "./js/ui/paso1.js?v=8963c78bcc",
   "./js/ui/paso2.js": "./js/ui/paso2.js?v=fa97690d6b",
   "./js/ui/paso3.js": "./js/ui/paso3.js?v=aff19918ec",
-  "./js/ui/paso4.js": "./js/ui/paso4.js?v=a18767a4a2",
+  "./js/ui/paso4.js": "./js/ui/paso4.js?v=f11d1fd6f3",
   "./js/ui/tema.js": "./js/ui/tema.js?v=e5740e8ffa"
  }
 }
@@ -375,9 +376,9 @@
   <div class="card">
     <div class="row" style="margin-top:0;justify-content:space-between">
       <h2 style="margin:0">Nóminas generadas</h2>
-      <span class="row" style="margin-top:0"><button class="btn primary" id="btnIrReporte" title="Lo pagado por período, con descarga en Excel">Reporte de pagos</button><button class="btn" id="btnBackup" title="Todo el panel en un archivo, para respaldo">Exportar respaldo (.json)</button><button class="btn" id="btnBitCsv">Exportar bitácora (.csv)</button></span>
+      <span class="row" style="margin-top:0"><span class="btn primary file" title="El Detalle de Nómina que descargas de BancoEstado; puedes soltar varios a la vez">Cargar reporte del banco<input type="file" id="fReporteBanco" accept=".xls,.xlsx" multiple></span><button class="btn" id="btnIrReporte" title="Lo pagado por período, con descarga en Excel">Reporte de pagos</button><button class="btn" id="btnBackup" title="Todo el panel en un archivo, para respaldo">Exportar respaldo (.json)</button><button class="btn" id="btnBitCsv">Exportar bitácora (.csv)</button></span>
     </div>
-    <p class="sub" style="margin-top:4px">Cada nómina generada queda aquí con sus documentos. Márcala como cargada al subirla a BancoEstado y registra el resultado cuando el banco lo informe (desde las 14:00 del día de pago de la nómina).</p>
+    <p class="sub" style="margin-top:4px">Cada nómina generada queda aquí con sus documentos. Márcala como cargada al subirla a BancoEstado y registra el resultado cuando el banco lo informe (desde las 14:00 del día de pago de la nómina). Con <b>Cargar reporte del banco</b> el resultado se lee del Excel que descargas de BancoEstado, se muestra lo que va a cambiar y tú lo apruebas.</p>
     <div class="stats" id="bitStats"></div>
     <p class="filtroactivo" id="bitFiltro" hidden></p>
     <div class="bar">
@@ -393,6 +394,7 @@
       <tbody id="tbBit"></tbody>
     </table></div>
   </div>
+  <div class="card" id="cardConciliar" hidden></div>
   <div class="card" id="hDetail" hidden></div>
   <div class="card" id="cardReporte">
     <h2>Reporte de pagos</h2>
