@@ -1,6 +1,5 @@
-# Pruebas en cada push y pull request: formato contra la referencia, lectura
-# del reporte de BancoEstado y reglas de Firestore con el emulador (no toca el
-# proyecto real).
+# Pruebas en cada push y pull request: formato contra la referencia y
+# reglas de Firestore con el emulador (no toca el proyecto real).
 name: Pruebas
 
 on:
@@ -27,5 +26,4 @@ jobs:
           java-version: 21
       - run: npm ci --no-audit --no-fund
       - run: npm run formato
-      - run: npm run conciliar
       - run: npm run reglas

@@ -165,11 +165,6 @@ El formato del archivo, las validaciones y los cálculos son los mismos; `tests/
 
   Si dos personas generan a la vez, cada una recibe un número distinto. Con el emulador se comprobó que, en ese choque, Firestore responde "permiso denegado" en vez de reintentar, porque la regla del contador se evalúa con el número ya tomado. Por eso el panel reintenta hasta 5 veces con espera creciente.
 - **Anular, reintegrar, cargar y registrar resultados** también son atómicos. Una nómina anulada queda cerrada.
-- **Resultado desde el reporte de BancoEstado.** En la bitácora, **Cargar reporte del banco** lee el *Detalle de Nómina* que el banco deja descargar en Excel y registra el resultado de cada pago. Reconoce los tres formatos que publica (proveedores, remuneraciones y el detalle por documento, donde varias filas del mismo RUT son un solo pago) por la fila de encabezados, no por la posición de las columnas. Acepta varios archivos a la vez y dirige cada uno a su nómina por el **N° BancoEstado**.
-
-  Primero muestra una **vista previa** con lo que quedaría registrado; hasta que la persona la aprueba no se escribe nada. Lo que no calza se deja intacto y se avisa: un archivo de otra nómina, una nómina que no está cargada, un monto distinto al de la nómina, un estado que el panel no conoce, un pago ya reintegrado o uno que el banco no informa. Volver a subir el mismo archivo no reescribe nada.
-
-  Traduce solo los estados vistos en archivos reales: `Pagado`, `Rechazado` (con el motivo del banco) y `Pendiente de Cobro`, que es un pago cash o vale vista ya pagado y por cobrar en banco. Al aplicar, los resultados de una nómina van en **una sola transacción**, que vuelve a validar contra la nómina recién leída —entre la vista previa y el botón, otra persona pudo registrar algo— y deja en el historial una entrada con el archivo y una por pago.
 - **Columna DC** opcional:
   - se importa desde la plantilla (columna G), como 7.ª columna al pegar documentos, como 13.ª en el formato completo o por encabezado "DC";
   - se muestra en la tabla, viaja a la nómina y a la bitácora, y se puede buscar;
@@ -200,7 +195,6 @@ Requieren Node 20 o superior; las de reglas, también Java 11 o superior.
 cd tests
 npm install
 npm run formato   # .txt byte a byte y validaciones contra el código de la referencia
-npm run conciliar # lectura del reporte de BancoEstado y conciliación con la bitácora
 npm run reglas    # bloque de reglas en el emulador de Firestore
 npm run e2e       # Chromium contra los emuladores de Auth y Firestore (primera vez: npx playwright install chromium)
 ```
