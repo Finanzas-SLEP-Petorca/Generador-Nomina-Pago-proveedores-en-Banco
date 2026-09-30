@@ -192,14 +192,27 @@ export function fileName(prefijo, f, fecha = new Date(), fuentes = []) { return 
 export const nombreNomina = n => fileName(n.archivo, n.fuente);
 
 // Estado visible de una nómina en la bitácora.
+// Pago cash o vale vista de remuneraciones: aunque la nómina quede pagada, el banco
+// lo deja "Pendiente de cobro" hasta que la persona lo retira. Si no lo retira, los
+// fondos vuelven a la cuenta (cobro "devuelto") y el abono se puede volver a pagar.
+export const esCobroCaja = (n, p) => n.tipo === "abonos" && FORMAS_SIN_CUENTA.has(p.forma);
+export const porCobrar = (n, p) => esCobroCaja(n, p) && p.estado === "pagado" && !p.cobro;
+export const noCobrado = (n, p) => esCobroCaja(n, p) && p.estado === "pagado" && p.cobro === "devuelto";
+
 export function nomStatus(n, feriados = [], ahora = Date.now()) {
   if (n.estado === "anulada") return { k: "anulada", t: "Anulada", c: "neu" };
   if (n.estado === "generada") return { k: "generada", t: "Generada, falta cargar", c: "wrn" };
   const pend = n.pagos.filter(p => p.estado === "pendiente").length;
   const rech = n.pagos.filter(p => p.estado === "rechazado");
   if (pend) { const due = resultadoDesde(n, feriados); return ahora < due.getTime() ? { k: "espera", t: "Cargada, resultado desde " + fmtDue(due), c: "neu" } : { k: "revisar", t: "Registrar resultado del banco", c: "err" } }
-  const sinR = rech.filter(p => !p.reint).length;
-  if (rech.length) return { k: sinR ? "reintegrar" : "ok", t: `Procesada, ${rech.length} rechazo${rech.length > 1 ? "s" : ""}` + (sinR ? `, ${sinR} por reintegrar` : ""), c: sinR ? "wrn" : "okk" };
+  const dev = n.pagos.filter(p => noCobrado(n, p));
+  const sinR = [...rech, ...dev].filter(p => !p.reint).length;
+  const xCobrar = n.pagos.filter(p => porCobrar(n, p)).length;
+  const partes = [rech.length ? `${rech.length} rechazo${rech.length > 1 ? "s" : ""}` : "", dev.length ? `${dev.length} no cobrado${dev.length > 1 ? "s" : ""}` : ""].filter(Boolean).join(", ");
+  // Con pagos cash no cobrados el texto se acorta para que quepa en la tabla (el detalle lo explica).
+  if (sinR) return { k: "reintegrar", t: dev.length ? `Procesada, ${sinR} por reintegrar` : `Procesada, ${partes}, ${sinR} por reintegrar`, c: "wrn" };
+  if (xCobrar) return { k: "cobro", t: `Pagada, ${xCobrar} por cobrar en banco`, c: "wrn" };
+  if (partes) return { k: "ok", t: `Procesada, ${partes}`, c: "okk" };
   return { k: "ok", t: "Procesada, todo pagado", c: "okk" };
 }
 
@@ -309,14 +322,16 @@ export function reportePagos(nominas, { desde = "", hasta = "", fuente = "*", ti
     && (tipo === "*" || (tipo === "abonos") === (n.tipo === "abonos"))
     && (!desde || fechaReporte(n) >= desde) && (!hasta || fechaReporte(n) <= hasta))
     .sort((a, b) => fechaReporte(a).localeCompare(fechaReporte(b)) || a.num - b.num);
-  const cero = () => ({ nominas: 0, pagado: 0, nPagado: 0, rechazado: 0, nRechazado: 0, pendiente: 0, nPendiente: 0 });
+  const cero = () => ({ nominas: 0, pagado: 0, nPagado: 0, rechazado: 0, nRechazado: 0, pendiente: 0, nPendiente: 0, porCobrar: 0, nPorCobrar: 0 });
   const tot = cero(), grupos = {}, pagados = [], rechazados = [];
   sel.forEach(n => {
     const tipoN = n.tipo === "abonos" ? "Remuneraciones" : "Proveedores";
     const g = grupos[tipoN + "|" + n.fuente] = grupos[tipoN + "|" + n.fuente] || { tipo: tipoN, fuente: n.fuente, ...cero() };
     g.nominas++; tot.nominas++;
     n.pagos.forEach(p => {
-      const k = p.estado === "pagado" ? "pagado" : p.estado === "rechazado" ? "rechazado" : "pendiente";
+      // Un pago cash no cobrado (fondos devueltos a la cuenta) cuenta con los rechazados.
+      const k = noCobrado(n, p) ? "rechazado" : p.estado === "pagado" ? "pagado" : p.estado === "rechazado" ? "rechazado" : "pendiente";
+      if (porCobrar(n, p)) { g.porCobrar += p.monto; g.nPorCobrar++; tot.porCobrar += p.monto; tot.nPorCobrar++ }
       const nk = "n" + k[0].toUpperCase() + k.slice(1);
       g[k] += p.monto; g[nk]++; tot[k] += p.monto; tot[nk]++;
       if (k === "pagado") pagados.push({ n, p }); else if (k === "rechazado") rechazados.push({ n, p });
@@ -332,6 +347,8 @@ const $m = v => ({ $: v });
 const tipoRep = n => n.tipo === "abonos" ? "Remuneraciones" : "Proveedores";
 export const periodoReporte = (desde, hasta) => desde || hasta ? `${desde ? fmtISO(desde) : "inicio"} al ${hasta ? fmtISO(hasta) : "hoy"}` : "todas las fechas";
 
+const estadoCobro = (n, p) => !esCobroCaja(n, p) ? "" : p.cobro === "cobrado" ? "Cobrado" + (p.cobroFecha ? " " + fmtISO(p.cobroFecha) : "") : "Pendiente de cobro";
+
 export function reporteTablas(rep) {
   const t = rep.tot;
   const pagado = [];
@@ -339,12 +356,12 @@ export function reporteTablas(rep) {
     fmtISO(fechaReporte(n)), n.num, S(n.operacion), tipoRep(n), n.fuente, fmtRut(p.rut), p.nombre, M_BANCO[p.banco] || S(p.banco), S(p.cuenta),
     n.tipo === "abonos" ? S(d.concepto || n.concepto) : S(d.ndoc), n.tipo === "abonos" ? "" : (M_TIPO[d.tipo] ? d.tipo + " " + M_TIPO[d.tipo] : S(d.tipo)),
     n.tipo === "abonos" ? "" : fmtFecha(d.fecha), n.tipo === "abonos" ? S(d.glosa) : S(d.dc),
-    $m(NC.has(d.tipo) ? -d.monto : d.monto), i === 0 ? $m(p.monto) : null])));
+    $m(NC.has(d.tipo) ? -d.monto : d.monto), i === 0 ? $m(p.monto) : null, i === 0 ? estadoCobro(n, p) : ""])));
   return {
     resumen: {
-      head: ["TIPO", "FUENTE", "NÓMINAS", "PAGOS PAGADOS", "MONTO PAGADO", "RECHAZADOS", "MONTO RECHAZADO", "PENDIENTES", "MONTO PENDIENTE"],
-      body: rep.resumen.map(g => [g.tipo, g.fuente, g.nominas, g.nPagado, $m(g.pagado), g.nRechazado, $m(g.rechazado), g.nPendiente, $m(g.pendiente)]),
-      foot: ["TOTAL", "", t.nominas, t.nPagado, $m(t.pagado), t.nRechazado, $m(t.rechazado), t.nPendiente, $m(t.pendiente)],
+      head: ["TIPO", "FUENTE", "NÓMINAS", "PAGOS PAGADOS", "MONTO PAGADO", "RECHAZADOS", "MONTO RECHAZADO", "PENDIENTES", "MONTO PENDIENTE", "POR COBRAR EN BANCO"],
+      body: rep.resumen.map(g => [g.tipo, g.fuente, g.nominas, g.nPagado, $m(g.pagado), g.nRechazado, $m(g.rechazado), g.nPendiente, $m(g.pendiente), $m(g.porCobrar)]),
+      foot: ["TOTAL", "", t.nominas, t.nPagado, $m(t.pagado), t.nRechazado, $m(t.rechazado), t.nPendiente, $m(t.pendiente), $m(t.porCobrar)],
     },
     nominas: {
       head: ["N° NÓMINA", "N° BANCOESTADO", "TIPO", "FUENTE", "CONCEPTO", "FECHA CARGA", "FECHA PAGO", "CARGADA POR", "PAGOS", "TOTAL", "PAGADO", "RECHAZADO", "PENDIENTE"],
@@ -354,13 +371,13 @@ export function reporteTablas(rep) {
       }),
     },
     pagado: {
-      head: ["FECHA PAGO", "N° NÓMINA", "N° BANCOESTADO", "TIPO", "FUENTE", "RUT", "BENEFICIARIO", "BANCO", "CUENTA", "N° DOC / CONCEPTO", "TIPO DOC", "FECHA DOC", "DC / GLOSA", "MONTO DOCUMENTO", "TOTAL PAGO"],
+      head: ["FECHA PAGO", "N° NÓMINA", "N° BANCOESTADO", "TIPO", "FUENTE", "RUT", "BENEFICIARIO", "BANCO", "CUENTA", "N° DOC / CONCEPTO", "TIPO DOC", "FECHA DOC", "DC / GLOSA", "MONTO DOCUMENTO", "TOTAL PAGO", "COBRO EN BANCO"],
       body: pagado,
-      foot: ["TOTAL PAGADO", "", "", "", "", "", "", "", "", "", "", "", "", null, $m(t.pagado)],
+      foot: ["TOTAL PAGADO", "", "", "", "", "", "", "", "", "", "", "", "", null, $m(t.pagado), t.porCobrar ? "Por cobrar " + money(t.porCobrar) : ""],
     },
     rechazados: {
       head: ["FECHA PAGO", "N° NÓMINA", "N° BANCOESTADO", "TIPO", "FUENTE", "RUT", "BENEFICIARIO", "BANCO", "CUENTA", "MONTO", "MOTIVO", "REINTEGRADO A PENDIENTES"],
-      body: rep.rechazados.map(({ n, p }) => [fmtISO(fechaReporte(n)), n.num, S(n.operacion), tipoRep(n), n.fuente, fmtRut(p.rut), p.nombre, M_BANCO[p.banco] || S(p.banco), S(p.cuenta), $m(p.monto), S(p.motivo), p.reint ? fmtISO(p.reint) : "No"]),
+      body: rep.rechazados.map(({ n, p }) => [fmtISO(fechaReporte(n)), n.num, S(n.operacion), tipoRep(n), n.fuente, fmtRut(p.rut), p.nombre, M_BANCO[p.banco] || S(p.banco), S(p.cuenta), $m(p.monto), noCobrado(n, p) ? "No cobrado en banco, devuelto a la cuenta" + (p.cobroFecha ? " el " + fmtISO(p.cobroFecha) : "") : S(p.motivo), p.reint ? fmtISO(p.reint) : "No"]),
       foot: ["TOTAL RECHAZADO", "", "", "", "", "", "", "", "", $m(t.rechazado)],
     },
   };
@@ -377,8 +394,8 @@ export function reporteHojas(rep, { desde = "", hasta = "", filtros = "", genera
     ["NÓMINAS DEL PERÍODO"], ...tabla(T.nominas),
   ];
   return [
-    { nombre: "Resumen", filas: resumen, anchos: [16, 16, 16, 16, 16, 14, 16, 22, 10, 14, 14, 14, 14] },
-    { nombre: "Pagado", filas: tabla(T.pagado), anchos: [11, 10, 14, 15, 12, 13, 34, 26, 14, 18, 22, 11, 14, 16, 14] },
+    { nombre: "Resumen", filas: resumen, anchos: [16, 16, 16, 16, 16, 14, 16, 22, 16, 20, 14, 14, 14] },
+    { nombre: "Pagado", filas: tabla(T.pagado), anchos: [11, 10, 14, 15, 12, 13, 34, 26, 14, 18, 22, 11, 14, 16, 14, 20] },
     { nombre: "Rechazados", filas: tabla(T.rechazados), anchos: [11, 10, 14, 15, 12, 13, 34, 26, 14, 14, 30, 14] },
   ];
 }

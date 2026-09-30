@@ -49,7 +49,7 @@ export function pdfReporte(rep, meta, { jsPDF, autoTable, logo }) {
     doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.text(sub, kx + 4, ky + 16.8);
   };
   const pl = (n, s) => n + " " + s + (n === 1 ? "" : "s");
-  kpi(0, "Pagado", pesos(t.pagado), `${pl(t.nPagado, "pago")} en ${t.nominas} nómina${t.nominas === 1 ? "" : "s"}`, true);
+  kpi(0, "Pagado", pesos(t.pagado), `${pl(t.nPagado, "pago")} en ${t.nominas} nómina${t.nominas === 1 ? "" : "s"}${t.porCobrar ? ` · ${pesos(t.porCobrar)} por cobrar en banco` : ""}`, true);
   kpi(1, "Rechazado", pesos(t.rechazado), pl(t.nRechazado, "pago"));
   kpi(2, "Pendiente de resultado", pesos(t.pendiente), pl(t.nPendiente, "pago"));
 
@@ -61,7 +61,10 @@ export function pdfReporte(rep, meta, { jsPDF, autoTable, logo }) {
   T.pagado.body.forEach(f => { f[7] = corto(f[7]) }); T.rechazados.body.forEach(f => { f[7] = corto(f[7]) });
   // Tipo y N° BancoEstado ya están en "Nóminas del período": en el detalle se omiten para que quepa en A4.
   const sin = (tabla, cols) => { const q = f => f.filter((_, i) => !cols.includes(i)); return { head: q(tabla.head), body: tabla.body.map(q), foot: tabla.foot && q(tabla.foot) } };
-  const pagadoPdf = sin(T.pagado, [2, 3]), rechazadosPdf = sin(T.rechazados, [2, 3]);
+  // Sin pagos cash en el período, las columnas de cobro en banco no aportan.
+  const hayCaja = T.pagado.body.some(f => f[15]);
+  const pagadoPdf = sin(T.pagado, hayCaja ? [2, 3] : [2, 3, 15]), rechazadosPdf = sin(T.rechazados, [2, 3]);
+  const resumenPdf = hayCaja || t.porCobrar ? T.resumen : sin(T.resumen, [9]);
   // Fechas, RUT y montos no se cortan en dos líneas.
   const sinCorte = cols => Object.fromEntries(cols.map(c => [c, { cellWidth: "wrap" }]));
   let y = 60;
@@ -81,7 +84,7 @@ export function pdfReporte(rep, meta, { jsPDF, autoTable, logo }) {
     });
     y = doc.lastAutoTable.finalY + 9;
   };
-  seccion("Resumen por tipo y fuente", T.resumen, "No hay nóminas cargadas en el período.");
+  seccion("Resumen por tipo y fuente", resumenPdf, "No hay nóminas cargadas en el período.");
   seccion("Nóminas del período", T.nominas, "No hay nóminas cargadas en el período.");
   seccion("Detalle de lo pagado", pagadoPdf, "No hay pagos marcados como pagados en el período.", { ...sinCorte([0, 1, 3, 5, 6, 9, 11, 12]), 4: { minCellWidth: 40 } });
   seccion("Rechazados", rechazadosPdf, "Sin rechazos en el período.", { ...sinCorte([0, 1, 3, 5, 6, 7]), 4: { minCellWidth: 40 } });

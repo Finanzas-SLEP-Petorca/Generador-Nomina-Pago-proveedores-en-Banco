@@ -332,6 +332,7 @@ try {
     await esperar(A, () => document.getElementById("dlgGenerada").open); await A.click("#genCerrar");
     const nAb = await A.$eval("#hDetail h2", h => h.textContent);
     assert.match(nAb, /remuneraciones \(fondos fijos\)/);
+    const idAb = await A.$eval("#hDetail", b => b.dataset.id);
     log("remuneraciones: genera", abTxt.nombre, "y", abXl.nombre, "(7 campos por línea, pago cash sin cuenta y CuentaRUT)");
     // Bitácora: filtro por tipo, carga, rechazo y vuelta a pendientes.
     await A.selectOption("#hTipo", "abonos");
@@ -367,6 +368,29 @@ try {
     });
     assert.deepEqual(hEd, [["01", "29", 33333]]);
     log("remuneraciones: editar un abono pendiente; el cambio de banco/forma queda en el historial con antes y después");
+    // Pago cash (forma 29): pagado por el banco, pero pendiente de cobro hasta que se retira.
+    await A.click('.steps button[data-step="4"]');
+    if (await A.$eval("#hDetail", (b, id) => b.hidden || b.dataset.id !== id, idAb)) await A.click(`#tbBit tr[data-id="${idAb}"]`); // tocarla abierta la cierra
+    await esperar(A, id => !document.getElementById("hDetail").hidden && document.getElementById("hDetail").dataset.id === id && !!document.getElementById("nPagarRest"), idAb);
+    await A.click("#nPagarRest");
+    await esperar(A, () => document.querySelector("#hDetail .tag")?.textContent === "Pagada, 1 por cobrar en banco");
+    assert.match(await toastTxt(A), /queda en «Por cobrar en banco»/);
+    assert.equal(await A.$$eval("#hDetail [data-co]", s => s.length), 1); // solo el pago cash
+    assert.equal(await A.textContent('#bitStats .stat[data-k="cobro"] small'), "$150.000");
+    assert.ok((await A.textContent("#hDetail .due")).includes("por cobrar en banco $150.000"));
+    await A.selectOption('#hDetail [data-co="0"]', "cobrado");
+    await esperar(A, () => /Procesada, 1 rechazo$/.test(document.querySelector("#hDetail .tag")?.textContent) && !!document.querySelector('#hDetail [data-cf="0"]'));
+    assert.equal(await A.inputValue('#hDetail [data-cf="0"]'), iso(new Date()));
+    assert.ok(await A.$eval('#hDetail [data-pe="0"]', s => s.disabled)); // con cobro registrado no se cambia el resultado
+    await A.selectOption('#hDetail [data-co="0"]', "devuelto");
+    await esperar(A, () => /^Procesada, 1 por reintegrar$/.test(document.querySelector("#hDetail .tag")?.textContent) && !!document.querySelector('#hDetail [data-pr="0"]'));
+    await A.click('#hDetail [data-pr="0"]');
+    await esperar(A, () => document.getElementById("cntAbonos").textContent === "3/3" && /Procesada, 1 rechazo, 1 no cobrado$/.test(document.querySelector("#hDetail .tag")?.textContent));
+    const histCobro = await A.$$eval("#nHist li b", b => b.map(x => x.textContent));
+    assert.deepEqual(histCobro.filter(h => /cobro|no cobrado/.test(h)), ["cobro en banco", "cobro en banco", "reintegrar pago no cobrado"]);
+    await A.click('.steps button[data-step="6"]');
+    assert.match(await A.textContent("#abTabla"), /No cobrado en banco en nómina N° \d+/);
+    log("pago cash: pendiente de cobro → cobrado → no cobrado; vuelve a Remuneraciones para pagarlo de nuevo");
     assert.match(await A.textContent("#p6 [data-estado=s]"), /abonos? marcados?/);
     const navOk = await A.evaluate(() => { const n = document.querySelector(".steps"); return n.scrollWidth <= n.clientWidth + 1 });
     assert.ok(navOk, "las pestañas no caben en 1280 px");

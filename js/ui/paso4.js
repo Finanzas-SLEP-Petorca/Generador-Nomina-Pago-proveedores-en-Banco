@@ -1,11 +1,11 @@
 // Paso 4: bitácora de nóminas, resultado del banco e historial.
 
 import { M_TIPO, EST_PAGO } from "../catalogos.js";
-import { S, normRut, fmtRut, money, fmtFecha, fmtISO, isoLocal, todayISO, resultadoDesde, fmtDue, diaHabilSiguiente, esHabil, nombreDe, nomStatus, nombreNomina, toTxt, today, reportePagos, reporteHojas } from "../formato.js";
+import { S, normRut, fmtRut, money, fmtFecha, fmtISO, isoLocal, todayISO, resultadoDesde, fmtDue, diaHabilSiguiente, esHabil, nombreDe, nomStatus, nombreNomina, toTxt, today, reportePagos, reporteHojas, esCobroCaja, porCobrar, noCobrado } from "../formato.js";
 import { bankWorkbook, abonosWorkbook, libroReporte } from "../excel.js";
 import { pdfReporte, cargarPdf } from "../pdf.js";
 import { M_FORMA_ABONO } from "../catalogos.js";
-import { st, aFecha, suscribirHistorial, cargarNomina, guardarCarga, deshacerCarga, resultadoPago, pagarPendientes, volverPendientes, anularNomina, exportarRespaldo } from "../datos.js";
+import { st, aFecha, suscribirHistorial, cargarNomina, guardarCarga, deshacerCarga, resultadoPago, pagarPendientes, cobroPago, volverPendientes, anularNomina, exportarRespaldo } from "../datos.js";
 import { $, esc, toast, accion, descargar, prefs, guardarPrefs, mensajeError } from "./comun.js";
 import { fechaHora } from "./paso1.js";
 
@@ -18,8 +18,11 @@ const creada = n => { const d = aFecha(n.creadaAt); return d ? fmtISO(isoLocal(d
 // Nombre corto bajo la fecha en la tabla (el correo completo queda en el título).
 const quien = email => email ? `<span class="hint" style="display:block" title="${esc(email)}">${esc(nombreDe(email))}</span>` : "";
 const normDcQ = v => S(v).toLowerCase().replace(/\s+/g, "");
-const TARJETAS = [["generada", "Generadas sin cargar"], ["espera", "Esperando resultado"], ["revisar", "Por registrar resultado"], ["reintegrar", "Con rechazos por reintegrar"], ["ok", "Pagadas"]];
-const pagadoDe = n => n.pagos.filter(p => p.estado === "pagado").reduce((a, p) => a + p.monto, 0);
+const TARJETAS = [["generada", "Generadas sin cargar"], ["espera", "Esperando resultado"], ["revisar", "Por registrar resultado"], ["reintegrar", "Con rechazos por reintegrar"], ["cobro", "Por cobrar en banco"], ["ok", "Pagadas"]];
+const pagadoDe = n => n.pagos.filter(p => p.estado === "pagado" && !noCobrado(n, p)).reduce((a, p) => a + p.monto, 0);
+const noCobradoDe = n => n.pagos.filter(p => noCobrado(n, p)).reduce((a, p) => a + p.monto, 0);
+const porCobrarDe = n => n.pagos.filter(p => porCobrar(n, p)).reduce((a, p) => a + p.monto, 0);
+const COBRO = { "": "Pendiente de cobro", cobrado: "Cobrado", devuelto: "No cobrado (devuelto)" };
 
 // Período del reporte de pagos: por defecto, el mes en curso.
 const hoy = () => todayISO();
@@ -40,8 +43,8 @@ export function init() {
     const nominas = st.nominas;
     if (!nominas.length) { toast("La bitácora está vacía"); return }
     const q = v => { v = S(v); return /[;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v };
-    const rows = [["N NOMINA", "FUENTE", "FECHA GENERACION", "GENERADA POR", "ESTADO NOMINA", "FECHA CARGA", "CARGADA POR", "FECHA PAGO", "N NOMINA BANCOESTADO", "RUT", "BENEFICIARIO", "MONTO PAGO", "RESULTADO", "MOTIVO RECHAZO", "REINTEGRADO", "N DOC", "TIPO DOC", "FECHA DOC", "MONTO DOC", "DC", "TIPO NOMINA", "CONCEPTO", "GLOSA"]];
-    nominas.slice().sort((a, b) => a.num - b.num).forEach(n => { const s = status(n); n.pagos.forEach(p => p.docs.forEach(d => rows.push([n.num, n.fuente, creada(n), n.creadaPor, s.t, fmtISO(n.fechaCarga), n.cargadaPor, fmtISO(n.fechaPago), n.operacion, p.rut, p.nombre, p.monto, n.estado === "anulada" ? "Anulada" : EST_PAGO[p.estado], p.motivo, fmtISO(p.reint), d.ndoc, d.tipo, fmtFecha(d.fecha), d.monto, d.dc, esAbonos(n) ? "REMUNERACIONES" : "PROVEEDORES", d.concepto || n.concepto, d.glosa]))) });
+    const rows = [["N NOMINA", "FUENTE", "FECHA GENERACION", "GENERADA POR", "ESTADO NOMINA", "FECHA CARGA", "CARGADA POR", "FECHA PAGO", "N NOMINA BANCOESTADO", "RUT", "BENEFICIARIO", "MONTO PAGO", "RESULTADO", "MOTIVO RECHAZO", "REINTEGRADO", "N DOC", "TIPO DOC", "FECHA DOC", "MONTO DOC", "DC", "TIPO NOMINA", "CONCEPTO", "GLOSA", "COBRO EN BANCO", "FECHA COBRO"]];
+    nominas.slice().sort((a, b) => a.num - b.num).forEach(n => { const s = status(n); n.pagos.forEach(p => p.docs.forEach(d => rows.push([n.num, n.fuente, creada(n), n.creadaPor, s.t, fmtISO(n.fechaCarga), n.cargadaPor, fmtISO(n.fechaPago), n.operacion, p.rut, p.nombre, p.monto, n.estado === "anulada" ? "Anulada" : EST_PAGO[p.estado], p.motivo, fmtISO(p.reint), d.ndoc, d.tipo, fmtFecha(d.fecha), d.monto, d.dc, esAbonos(n) ? "REMUNERACIONES" : "PROVEEDORES", d.concepto || n.concepto, d.glosa, esCobroCaja(n, p) && p.estado === "pagado" ? COBRO[p.cobro || ""] : "", fmtISO(p.cobroFecha)]))) });
     descargar("bitacora_nominas_" + today() + ".csv", "﻿" + rows.map(r => r.map(q).join(";")).join("\r\n"));
   };
   $("btnIrReporte").onclick = () => $("cardReporte").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -93,8 +96,9 @@ export function renderBit() {
   const nominas = st.nominas;
   const st2 = nominas.map(n => ({ n, s: status(n) }));
   const cnt = k => st2.filter(x => x.s.k === k).length;
-  // Cada tarjeta filtra la tabla; en "Pagadas" el monto es lo pagado, en el resto el total de las nóminas.
-  const monto = k => st2.filter(x => x.s.k === k).reduce((a, x) => a + (k === "ok" ? pagadoDe(x.n) : x.n.total), 0);
+  // Cada tarjeta filtra la tabla; en "Pagadas" el monto es lo pagado, en "Por cobrar" lo que falta retirar
+  // en el banco, y en el resto el total de las nóminas.
+  const monto = k => st2.filter(x => x.s.k === k).reduce((a, x) => a + (k === "ok" ? pagadoDe(x.n) : k === "cobro" ? porCobrarDe(x.n) : x.n.total), 0);
   $("bitStats").innerHTML = TARJETAS.map(([k, t]) => `<button class="stat" data-k="${k}" aria-pressed="${bitView === k}" title="${bitView === k ? "Toca de nuevo para ver todas" : "Ver solo estas nóminas"}"><b>${cnt(k)}</b><span>${t}</span><small>${money(monto(k))}</small></button>`).join("");
   const fil = $("bitFiltro"); fil.hidden = !bitView;
   if (bitView) fil.innerHTML = `Mostrando solo <b>${esc(TARJETAS.find(c => c[0] === bitView)[1].toLowerCase())}</b>. <button class="btn small" data-vertodas>Ver todas</button>`;
@@ -149,12 +153,12 @@ function renderReporte() {
   if (rep.fuente !== "*" && !fus.includes(rep.fuente)) rep.fuente = "*";
   $("rFuente").innerHTML = `<option value="*">Todas</option>` + fus.map(f => `<option value="${esc(f)}"${f === rep.fuente ? " selected" : ""}>${esc(f)}</option>`).join("");
   const r = reportePagos(st.nominas, filtroReporte()), t = r.tot;
-  $("rKpis").innerHTML = `<div class="kpi hero"><span class="kpi-t">Pagado</span><b>${money(t.pagado)}</b><small>${t.nPagado} pago${t.nPagado === 1 ? "" : "s"} en ${t.nominas} nómina${t.nominas === 1 ? "" : "s"}</small></div>`
+  $("rKpis").innerHTML = `<div class="kpi hero"><span class="kpi-t">Pagado</span><b>${money(t.pagado)}</b><small>${t.nPagado} pago${t.nPagado === 1 ? "" : "s"} en ${t.nominas} nómina${t.nominas === 1 ? "" : "s"}${t.porCobrar ? ` · ${money(t.porCobrar)} por cobrar en banco` : ""}</small></div>`
     + `<div class="kpi"><span class="kpi-t">Rechazado</span><b>${money(t.rechazado)}</b><small>${t.nRechazado} pago${t.nRechazado === 1 ? "" : "s"}</small></div>`
     + `<div class="kpi"><span class="kpi-t">Pendiente de resultado</span><b>${money(t.pendiente)}</b><small>${t.nPendiente} pago${t.nPendiente === 1 ? "" : "s"}</small></div>`;
-  $("tbReporte").innerHTML = r.resumen.length ? r.resumen.map(g => `<tr><td>${g.tipo}</td><td>${esc(g.fuente)}</td><td class="num">${g.nominas}</td><td class="num"><b>${money(g.pagado)}</b></td><td class="num">${money(g.rechazado)}</td><td class="num">${money(g.pendiente)}</td></tr>`).join("")
-    + (r.resumen.length > 1 ? `<tr><td colspan="2"><b>Total</b></td><td class="num"><b>${t.nominas}</b></td><td class="num"><b>${money(t.pagado)}</b></td><td class="num"><b>${money(t.rechazado)}</b></td><td class="num"><b>${money(t.pendiente)}</b></td></tr>` : "")
-    : `<tr><td colspan="6" class="empty">No hay nóminas cargadas con fecha de pago en este período.</td></tr>`;
+  $("tbReporte").innerHTML = r.resumen.length ? r.resumen.map(g => `<tr><td>${g.tipo}</td><td>${esc(g.fuente)}</td><td class="num">${g.nominas}</td><td class="num"><b>${money(g.pagado)}</b></td><td class="num">${money(g.rechazado)}</td><td class="num">${money(g.pendiente)}</td><td class="num">${money(g.porCobrar)}</td></tr>`).join("")
+    + (r.resumen.length > 1 ? `<tr><td colspan="2"><b>Total</b></td><td class="num"><b>${t.nominas}</b></td><td class="num"><b>${money(t.pagado)}</b></td><td class="num"><b>${money(t.rechazado)}</b></td><td class="num"><b>${money(t.pendiente)}</b></td><td class="num"><b>${money(t.porCobrar)}</b></td></tr>` : "")
+    : `<tr><td colspan="7" class="empty">No hay nóminas cargadas con fecha de pago en este período.</td></tr>`;
 }
 
 const escribiendo = () => { const a = document.activeElement; return $("hDetail").contains(a) && (a.tagName === "INPUT" || a.tagName === "TEXTAREA") };
@@ -177,11 +181,15 @@ function renderNomDetail() {
   box.dataset.id = n.id;
   box.hidden = false; const s = status(n);
   const cargada = n.estado === "cargada", anul = n.estado === "anulada";
+  const conCobro = n.pagos.some(p => esCobroCaja(n, p));
+  // Con columna de cobro, "Volver a pendientes" va dentro de la celda del motivo o del cobro, para que la tabla quepa.
+  const reintegro = (p, i) => { const e = conCobro ? `<div style="margin-top:4px">` : "", c = conCobro ? "</div>" : ""; return p.reint ? `${e}<span class="hint">Reintegrado ${fmtISO(p.reint)}</span>${c}` : anul ? "" : `${e}<button class="btn small" data-pr="${i}">Volver a pendientes</button>${c}` };
+  const celdaCobro = (p, i) => !esCobroCaja(n, p) || p.estado !== "pagado" ? "" : `<select class="inl" data-co="${i}" ${cargada && !p.reint ? "" : "disabled"} aria-label="Cobro en banco">${Object.entries(COBRO).map(([k, t]) => `<option value="${k}"${(p.cobro || "") === k ? " selected" : ""}>${t}</option>`).join("")}</select>${p.cobro ? `<input type="date" class="inl" data-cf="${i}" value="${esc(p.cobroFecha || "")}" ${cargada && !p.reint ? "" : "disabled"} aria-label="Fecha de ${p.cobro === "cobrado" ? "cobro" : "devolución"}" title="Fecha de ${p.cobro === "cobrado" ? "cobro" : "devolución a la cuenta"}" style="margin-top:4px;width:150px;display:block">` : ""}`;
   const due = n.fechaCarga ? resultadoDesde(n, st.config.feriados) : null;
   const pend = n.pagos.filter(p => p.estado === "pendiente").length, pag = n.pagos.filter(p => p.estado === "pagado"), rech = n.pagos.filter(p => p.estado === "rechazado");
   box.innerHTML = `
   <div class="row" style="margin-top:0;justify-content:space-between"><h2 style="margin:0">Nómina N° ${n.num}${n.operacion ? ` <span class="hint" style="font-size:.7em">· BancoEstado N° ${esc(n.operacion)}</span>` : ""}, ${esc(n.fuente)}${esAbonos(n) ? ` · remuneraciones${n.concepto ? " (" + esc(n.concepto.toLowerCase()) + ")" : ""}` : ""}</h2><span class="row" style="margin-top:0"><span class="tag ${s.c}">${esc(s.t)}</span><button class="btn small" id="nCerrar" title="Cerrar el detalle">Cerrar ✕</button></span></div>
-  <p class="due">Generada el ${creada(n)}${n.creadaPor ? ` por <b title="${esc(n.creadaPor)}">${esc(nombreDe(n.creadaPor))}</b>` : ""}.${n.fechaCarga ? ` Cargada en BancoEstado el ${fmtISO(n.fechaCarga)}${n.cargadaPor ? ` por <b title="${esc(n.cargadaPor)}">${esc(nombreDe(n.cargadaPor))}</b>` : ""}.` : ""} Archivo ${esc(nombreNomina(n))}.txt. ${n.pagos.length} pago${n.pagos.length === 1 ? "" : "s"} por ${money(n.total)}.${n.fechaPago ? ` Fecha de pago: ${fmtISO(n.fechaPago)}.` : ""}${cargada ? ` Pagado ${money(pag.reduce((a, p) => a + p.monto, 0))}, rechazado ${money(rech.reduce((a, p) => a + p.monto, 0))}, pendiente de resultado ${money(n.pagos.filter(p => p.estado === "pendiente").reduce((a, p) => a + p.monto, 0))}.` : ""}</p>
+  <p class="due">Generada el ${creada(n)}${n.creadaPor ? ` por <b title="${esc(n.creadaPor)}">${esc(nombreDe(n.creadaPor))}</b>` : ""}.${n.fechaCarga ? ` Cargada en BancoEstado el ${fmtISO(n.fechaCarga)}${n.cargadaPor ? ` por <b title="${esc(n.cargadaPor)}">${esc(nombreDe(n.cargadaPor))}</b>` : ""}.` : ""} Archivo ${esc(nombreNomina(n))}.txt. ${n.pagos.length} pago${n.pagos.length === 1 ? "" : "s"} por ${money(n.total)}.${n.fechaPago ? ` Fecha de pago: ${fmtISO(n.fechaPago)}.` : ""}${cargada ? ` Pagado ${money(pagadoDe(n))}${noCobradoDe(n) ? `, no cobrado ${money(noCobradoDe(n))}` : ""}, rechazado ${money(rech.reduce((a, p) => a + p.monto, 0))}, pendiente de resultado ${money(n.pagos.filter(p => p.estado === "pendiente").reduce((a, p) => a + p.monto, 0))}${porCobrarDe(n) ? `, por cobrar en banco ${money(porCobrarDe(n))}` : ""}.` : ""}</p>
   <div class="grid">
     <label>Fecha de carga en BancoEstado<input type="date" id="nFecha" value="${n.fechaCarga || todayISO()}" ${anul ? "disabled" : ""}></label>
     <label title="Día en que el banco paga la nómina. Queda registrada aunque después haya pagos rechazados.">Fecha de pago de la nómina<input type="date" id="nFechaPago" value="${n.fechaPago || diaHabilSiguiente(n.fechaCarga || todayISO(), st.config.feriados)}" ${anul ? "disabled" : ""}></label>
@@ -200,16 +208,17 @@ function renderNomDetail() {
   </div>
   ${cargada && pend && Date.now() < due.getTime() ? `<p class="hint">Si el banco rechaza algún pago, márcalo como Rechazado con su motivo. Al resto le puedes aplicar “Marcar pendientes como pagados”.</p>` : ""}
   ${anul ? `<p class="hint">Nómina anulada: queda cerrada y no se puede volver a editar.</p>` : ""}
+  ${conCobro && cargada ? `<p class="hint">Pago cash o vale vista: aunque el banco lo pague, queda <b>Pendiente de cobro</b> hasta que se retira. Marca <b>Cobrado</b> cuando se retire, o <b>No cobrado</b> si los fondos volvieron a la cuenta; en ese caso “Volver a pendientes” lo deja listo para pagarlo de nuevo.</p>` : ""}
   <div class="tablebox"><table>
-    <thead><tr><th>Beneficiario</th><th>Cuenta</th><th>${esAbonos(n) ? "Abonos" : "Documentos"}</th><th style="text-align:right">Monto</th><th>Resultado</th><th>Motivo de rechazo</th><th></th></tr></thead>
+    <thead><tr><th>Beneficiario</th><th>Cuenta</th><th>${esAbonos(n) ? "Abonos" : "Documentos"}</th><th style="text-align:right">Monto</th><th>Resultado</th><th>Motivo de rechazo</th>${conCobro ? `<th title="Pago cash o vale vista: queda pendiente de cobro hasta que se retira en el banco">Cobro en banco</th>` : "<th></th>"}</tr></thead>
     <tbody>${n.pagos.map((p, i) => `<tr>
       <td><span class="mono">${esc(fmtRut(p.rut))}</span><br>${esc(p.nombre)}</td>
       <td class="mono"${p.forma ? ` title="${esc(M_FORMA_ABONO[p.forma] || "")}"` : ""}>${esc(p.banco)}${p.forma ? " · " + esc(p.forma) + " ·" : ""} ${esc(p.cuenta) || "sin cuenta"}</td>
       <td>${esAbonos(n) ? p.docs.map(d => `<span class="hint">${esc(d.concepto || n.concepto)}${d.glosa ? " · " + esc(d.glosa) : ""} ${money(d.monto)}</span>`).join("<br>") : p.docs.map(d => `<span class="mono">${esc(d.ndoc)}</span> <span class="hint">${esc((M_TIPO[d.tipo] || d.tipo))} ${money(d.monto)}${d.dc ? " · " + esc(d.dc) : ""}</span>`).join("<br>")}</td>
       <td class="num">${money(p.monto)}</td>
-      <td><select class="inl" data-pe="${i}" ${cargada ? "" : "disabled"} aria-label="Resultado">${Object.entries(EST_PAGO).map(([k, t]) => `<option value="${k}"${p.estado === k ? " selected" : ""}>${t}</option>`).join("")}</select></td>
-      <td>${p.estado === "rechazado" ? `<input class="inl" data-pm="${i}" value="${esc(p.motivo)}" placeholder="Ej. cuenta inexistente" ${cargada ? "" : "disabled"}>` : ""}</td>
-      <td>${p.estado === "rechazado" ? (p.reint ? `<span class="hint">Reintegrado ${fmtISO(p.reint)}</span>` : anul ? "" : `<button class="btn small" data-pr="${i}">Volver a pendientes</button>`) : ""}</td>
+      <td><select class="inl" data-pe="${i}" ${cargada && !p.reint && !p.cobro ? "" : "disabled"}${p.cobro ? ` title="Vuelve el cobro a «Pendiente de cobro» para cambiar el resultado"` : ""} aria-label="Resultado">${Object.entries(EST_PAGO).map(([k, t]) => `<option value="${k}"${p.estado === k ? " selected" : ""}>${t}</option>`).join("")}</select></td>
+      <td>${p.estado === "rechazado" ? `<input class="inl" data-pm="${i}" value="${esc(p.motivo)}" placeholder="Ej. cuenta inexistente" ${cargada ? "" : "disabled"}>` : ""}${conCobro && p.estado === "rechazado" ? reintegro(p, i) : ""}</td>
+      ${conCobro ? `<td>${celdaCobro(p, i)}${noCobrado(n, p) ? reintegro(p, i) : ""}</td>` : `<td>${p.estado === "rechazado" ? reintegro(p, i) : ""}</td>`}
     </tr>`).join("")}</tbody>
   </table></div>
   <h3>Historial de la nómina</h3>
@@ -230,7 +239,7 @@ function renderNomDetail() {
   };
   if (q("nCargar")) q("nCargar").onclick = () => { const d = datosCarga(); if (!fechasOk(d)) return; if (!d.operacion) { toast("Indica el N° de nómina que asignó BancoEstado"); q("nOper").focus(); return } accion(q("nCargar"), async () => { await cargarNomina(n.id, d); toast(`Nómina N° ${n.num} marcada como cargada el ${fmtISO(d.fechaCarga)}, con pago el ${fmtISO(d.fechaPago)}. Resultado desde el ${fmtDue(resultadoDesde(d, st.config.feriados))}`) }) };
   if (q("nGuardar")) q("nGuardar").onclick = () => { const d = datosCarga(); if (!fechasOk(d)) return; accion(q("nGuardar"), async () => { await guardarCarga(n.id, d); toast("Cambios guardados") }) };
-  if (q("nPagarRest")) q("nPagarRest").onclick = () => { if (Date.now() < due.getTime() && !confirm("Aún no es la hora del resultado del banco (14:00 del día de pago). ¿Marcar igual los pendientes como pagados?")) return; accion(q("nPagarRest"), async () => { await pagarPendientes(n.id); const sinR = n.pagos.some(p => p.estado === "rechazado" && !p.reint); toast(`Pagos pendientes marcados como pagados. La nómina N° ${n.num} queda en «${sinR ? "Con rechazos por reintegrar" : "Pagadas"}».`) }) };
+  if (q("nPagarRest")) q("nPagarRest").onclick = () => { if (Date.now() < due.getTime() && !confirm("Aún no es la hora del resultado del banco (14:00 del día de pago). ¿Marcar igual los pendientes como pagados?")) return; accion(q("nPagarRest"), async () => { await pagarPendientes(n.id); const sinR = n.pagos.some(p => p.estado === "rechazado" && !p.reint), caja = n.pagos.some(p => p.estado !== "rechazado" && esCobroCaja(n, p) && !p.cobro); toast(`Pagos pendientes marcados como pagados. La nómina N° ${n.num} queda en «${sinR ? "Con rechazos por reintegrar" : caja ? "Por cobrar en banco" : "Pagadas"}».`) }) };
   q("nTxt").onclick = () => descargar(nombreNomina(n) + ".txt", toTxt(n.lineas));
   q("nXlsx").onclick = () => accion(q("nXlsx"), async () => { try { descargar(nombreNomina(n) + ".xlsx", await (esAbonos(n) ? abonosWorkbook : bankWorkbook)(n.lineas)) } catch (e) { toast("No se pudo armar el Excel: " + mensajeError(e)) } });
   if (q("nAnular")) q("nAnular").onclick = () => { if (!confirm(`¿Anular la nómina N° ${n.num}? Sus ${n.pagos.reduce((a, p) => a + p.docs.length, 0)} ${esAbonos(n) ? "abonos" : "documentos"} vuelven a pendientes. Hazlo solo si no se cargó en el banco.`)) return; accion(q("nAnular"), async () => { await anularNomina(n.id); toast(`Nómina anulada; ${esAbonos(n) ? "abonos de vuelta en la pestaña Remuneraciones" : "documentos de vuelta en pendientes"}`) }) };
@@ -240,6 +249,11 @@ function renderNomDetail() {
     if (p.reint && sel.value !== "rechazado") { toast("Este pago ya se reintegró a pendientes; no se puede cambiar"); sel.value = "rechazado"; return }
     accion(sel, () => resultadoPago(n.id, +sel.dataset.pe, sel.value, p.motivo));
   });
+  box.querySelectorAll("[data-co]").forEach(sel => sel.onchange = () => {
+    const i = +sel.dataset.co, f = box.querySelector(`[data-cf="${i}"]`);
+    accion(sel, async () => { await cobroPago(n.id, i, sel.value, sel.value && f ? f.value : todayISO()); toast(`${n.pagos[i].nombre}: ${sel.value === "devuelto" ? "no cobrado, fondos devueltos a la cuenta" : COBRO[sel.value].toLowerCase()}`) });
+  });
+  box.querySelectorAll("[data-cf]").forEach(inp => inp.onchange = () => { const i = +inp.dataset.cf; if (inp.value) accion(null, () => cobroPago(n.id, i, n.pagos[i].cobro, inp.value)) });
   box.querySelectorAll("[data-pm]").forEach(inp => inp.onchange = () => accion(null, () => resultadoPago(n.id, +inp.dataset.pm, "rechazado", S(inp.value))));
   box.querySelectorAll("[data-pr]").forEach(b => b.onclick = () => { const p = n.pagos[+b.dataset.pr]; accion(b, async () => { await volverPendientes(n.id, +b.dataset.pr); toast(`${p.docs.length} ${esAbonos(n) ? "abono" : "documento"}${p.docs.length > 1 ? "s" : ""} de ${p.nombre} de vuelta en pendientes${esAbonos(n) ? " (pestaña Remuneraciones)" : ""}. Corrige los datos bancarios si hace falta.`) }) });
 }

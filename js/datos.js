@@ -4,7 +4,7 @@
 
 import { db, fs, firma } from "./firebase.js";
 import { FUENTES_DEFECTO, EMAIL_DEFECTO, PREFIJO_DEFECTO } from "./catalogos.js";
-import { S, checkProv, checkAbono, money, fmtRut, fmtISO, todayISO, normDc } from "./formato.js";
+import { S, checkProv, checkAbono, money, fmtRut, fmtISO, todayISO, normDc, esCobroCaja, noCobrado } from "./formato.js";
 
 const { doc, collection, onSnapshot, query, where, runTransaction, writeBatch, serverTimestamp, Timestamp, getDoc, deleteDoc } = fs;
 
@@ -396,6 +396,7 @@ export const resultadoPago = (id, i, estado, motivo) => modificarNomina(id, n =>
   const antes = { estado: p.estado, motivo: p.motivo };
   p.estado = estado; p.motivo = estado === "rechazado" ? S(motivo) : "";
   if (antes.estado === p.estado && antes.motivo === p.motivo) return { cambios: {} };
+  if (estado !== "pagado" && (p.cobro || p.cobroFecha)) { p.cobro = ""; p.cobroFecha = "" } // el cobro en banco solo aplica a un pago pagado
   return { cambios: { pagos }, hist: [hist("resultado de pago", refN(n), `${fmtRut(p.rut)} ${p.nombre} (${money(p.monto)}): ${antes.estado} → ${p.estado}${p.motivo ? ", motivo: " + p.motivo : ""}`, antes, { estado: p.estado, motivo: p.motivo })] };
 });
 export const pagarPendientes = id => modificarNomina(id, n => {
@@ -404,15 +405,29 @@ export const pagarPendientes = id => modificarNomina(id, n => {
   const pagos = n.pagos.map(p => p.estado === "pendiente" ? { ...p, estado: "pagado" } : p);
   return { cambios: { pagos }, hist: [hist("resultado de pago", refN(n), `${pend.length} pagos pendientes marcados como pagados (${money(pend.reduce((s, p) => s + p.monto, 0))})`, { estado: "pendiente", pagos: pend.map(p => p.rut) }, { estado: "pagado" })] };
 });
+// Cobro en banco de un pago cash o vale vista pagado: "" (pendiente de cobro), "cobrado" o "devuelto".
+export const cobroPago = (id, i, cobro, fecha) => modificarNomina(id, n => {
+  if (n.estado !== "cargada") throw new Conflicto("El cobro se registra con la nómina cargada");
+  const pagos = n.pagos.map(p => ({ ...p })); const p = pagos[i];
+  if (!esCobroCaja(n, p) || p.estado !== "pagado") throw new Conflicto("Solo un pago cash o vale vista pagado tiene cobro en banco");
+  if (p.reint) throw new Conflicto("Este pago ya volvió a pendientes; no se puede cambiar");
+  if (!["", "cobrado", "devuelto"].includes(cobro)) throw new Conflicto("Estado de cobro desconocido");
+  const antes = { cobro: p.cobro || "", cobroFecha: p.cobroFecha || "" };
+  p.cobro = cobro; p.cobroFecha = cobro ? (S(fecha) || todayISO()) : "";
+  if (antes.cobro === p.cobro && antes.cobroFecha === p.cobroFecha) return { cambios: {} };
+  const txt = { "": "pendiente de cobro", cobrado: "cobrado", devuelto: "no cobrado, devuelto a la cuenta" };
+  return { cambios: { pagos }, hist: [hist("cobro en banco", refN(n), `${fmtRut(p.rut)} ${p.nombre} (${money(p.monto)}): ${txt[antes.cobro]} → ${txt[p.cobro]}${p.cobroFecha ? " el " + fmtISO(p.cobroFecha) : ""}`, antes, { cobro: p.cobro, cobroFecha: p.cobroFecha })] };
+});
 export const volverPendientes = (id, i) => modificarNomina(id, n => {
   const pagos = n.pagos.map(p => ({ ...p })); const p = pagos[i];
-  if (p.estado !== "rechazado" || p.reint) throw new Conflicto("Este pago no está rechazado o ya se reintegró");
+  const dev = noCobrado(n, p);
+  if ((p.estado !== "rechazado" && !dev) || p.reint) throw new Conflicto("Este pago no está rechazado ni devuelto, o ya se reintegró");
   p.reint = todayISO();
-  const texto = `Rechazado en nómina N° ${n.num}${p.motivo ? ": " + p.motivo : ""}`;
+  const texto = dev ? `No cobrado en banco en nómina N° ${n.num} (devuelto a la cuenta)` : `Rechazado en nómina N° ${n.num}${p.motivo ? ": " + p.motivo : ""}`;
   const que = n.tipo === "abonos" ? "abono" : "documento";
   return {
     cambios: { pagos }, ...devolver(n, [p], texto),
-    hist: [hist("reintegrar pago rechazado", refN(n), `${p.docs.length} ${que}${p.docs.length > 1 ? "s" : ""} de ${fmtRut(p.rut)} ${p.nombre} vuelven a pendientes (${money(p.monto)})`, { estado: "rechazado", motivo: p.motivo, reint: "" }, { reint: p.reint })]
+    hist: [hist(dev ? "reintegrar pago no cobrado" : "reintegrar pago rechazado", refN(n), `${p.docs.length} ${que}${p.docs.length > 1 ? "s" : ""} de ${fmtRut(p.rut)} ${p.nombre} vuelven a pendientes (${money(p.monto)})`, { estado: p.estado, motivo: p.motivo, cobro: p.cobro || "", reint: "" }, { reint: p.reint })]
   };
 });
 export const anularNomina = id => modificarNomina(id, n => {

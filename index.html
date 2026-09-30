@@ -8,7 +8,7 @@
 <link rel="icon" type="image/png" href="assets/logo_slep_petorca.png">
 <!-- Tema elegido (Claro/Oscuro/Sistema) aplicado antes de pintar, para no parpadear -->
 <script>try{var t=localStorage.getItem("pago.tema");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
-<link rel="stylesheet" href="css/panel.css?v=6455a4adec">
+<link rel="stylesheet" href="css/panel.css?v=786775eb70">
 <!-- SheetJS y JSZip con versión fijada (copias en vendor/) -->
 <script src="vendor/xlsx-0.18.5.full.min.js" defer></script>
 <script src="vendor/jszip-3.10.1.min.js" defer></script>
@@ -17,21 +17,21 @@
  "imports": {
   "./js/app.js": "./js/app.js?v=77ba9d558b",
   "./js/catalogos.js": "./js/catalogos.js?v=10b7750732",
-  "./js/datos.js": "./js/datos.js?v=fae7eb469b",
+  "./js/datos.js": "./js/datos.js?v=ac8ebe44a0",
   "./js/excel.js": "./js/excel.js?v=3978c92e6c",
   "./js/firebase-config.js": "./js/firebase-config.js?v=ffcd41549c",
   "./js/firebase.js": "./js/firebase.js?v=6eba6d64a6",
-  "./js/formato.js": "./js/formato.js?v=f47dd47a55",
+  "./js/formato.js": "./js/formato.js?v=12d5d29c4b",
   "./js/importar.js": "./js/importar.js?v=51b36dd698",
-  "./js/pdf.js": "./js/pdf.js?v=5a96f99a26",
+  "./js/pdf.js": "./js/pdf.js?v=4fbd5ef8d0",
   "./js/ui/abonos.js": "./js/ui/abonos.js?v=e70bc36488",
   "./js/ui/comun.js": "./js/ui/comun.js?v=e11c0a4e36",
   "./js/ui/config.js": "./js/ui/config.js?v=fc62f90b44",
-  "./js/ui/guia.js": "./js/ui/guia.js?v=b23eeb1e90",
+  "./js/ui/guia.js": "./js/ui/guia.js?v=0cd8645f5a",
   "./js/ui/paso1.js": "./js/ui/paso1.js?v=8963c78bcc",
   "./js/ui/paso2.js": "./js/ui/paso2.js?v=fa97690d6b",
   "./js/ui/paso3.js": "./js/ui/paso3.js?v=aff19918ec",
-  "./js/ui/paso4.js": "./js/ui/paso4.js?v=52da17eff4",
+  "./js/ui/paso4.js": "./js/ui/paso4.js?v=a18767a4a2",
   "./js/ui/tema.js": "./js/ui/tema.js?v=e5740e8ffa"
  }
 }
@@ -406,7 +406,7 @@
     </div>
     <div class="kpis" id="rKpis"></div>
     <div class="tablebox"><table>
-      <thead><tr><th>Tipo</th><th>Fuente</th><th style="text-align:right">Nóminas</th><th style="text-align:right">Pagado</th><th style="text-align:right">Rechazado</th><th style="text-align:right">Pendiente de resultado</th></tr></thead>
+      <thead><tr><th>Tipo</th><th>Fuente</th><th style="text-align:right">Nóminas</th><th style="text-align:right">Pagado</th><th style="text-align:right">Rechazado</th><th style="text-align:right">Pendiente de resultado</th><th style="text-align:right" title="Pagos cash o vale vista que aún no se retiran en el banco">Por cobrar en banco</th></tr></thead>
       <tbody id="tbReporte"></tbody>
     </table></div>
     <div class="row"><button class="btn primary" id="btnReporte">Descargar reporte (Excel)</button><button class="btn primary" id="btnReportePdf">Descargar reporte (PDF)</button></div>

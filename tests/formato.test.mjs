@@ -288,7 +288,7 @@ ok("abonos: importar la hoja DETALLE del banco y filas pegadas", () => {
   const r = F.reportePagos(nominas, { desde: "2026-09-01", hasta: "2026-09-30" });
   ok("reporte de pagos: período por fecha de pago, sin generadas, montos por estado", () => {
     assert.deepEqual(r.nominas.map(n => n.num), [1, 2, 3]);  // la 3 sin fecha de pago usa la de carga; la 4 no se cargó; la 5 es de agosto
-    assert.deepEqual(r.tot, { nominas: 3, pagado: 1300, nPagado: 2, rechazado: 500, nRechazado: 1, pendiente: 70, nPendiente: 1 });
+    assert.deepEqual(r.tot, { nominas: 3, pagado: 1300, nPagado: 2, rechazado: 500, nRechazado: 1, pendiente: 70, nPendiente: 1, porCobrar: 0, nPorCobrar: 0 });
     assert.deepEqual(r.resumen.map(g => [g.tipo, g.fuente, g.pagado]), [["Proveedores", "SEP", 1000], ["Remuneraciones", "GENERAL", 300]]);
     assert.deepEqual(F.reportePagos(nominas, { desde: "2026-09-01", hasta: "2026-09-30", tipo: "abonos" }).nominas.map(n => n.num), [2]);
     assert.deepEqual(F.reportePagos(nominas, { fuente: "SEP" }).nominas.map(n => n.num), [5, 1, 3]);
@@ -309,6 +309,35 @@ ok("abonos: importar la hoja DETALLE del banco y filas pegadas", () => {
     const rs = hoja("Resumen");
     assert.equal(rs[1][1], "01/09/2026 al 30/09/2026");
     assert.deepEqual(rs.find(f => f[0] === "TOTAL").slice(2, 9), [3, 2, 1300, 1, 500, 1, 70]);
+  });
+}
+
+// Pago cash / vale vista de remuneraciones: pendiente de cobro, cobrado o no cobrado (devuelto).
+{
+  const E = await import(path.join(raiz, "js/excel.js"));
+  const caja = (rut, monto, cobro = "", extra = {}) => ({ rut, nombre: "DIRECTOR " + rut, banco: "012", forma: "20", cuenta: "", monto, estado: "pagado", motivo: "", reint: "", cobro, cobroFecha: cobro ? "2026-10-02" : "", docs: [{ monto, concepto: "FONDOS FIJOS", glosa: "" }], ...extra });
+  const nom = pagos => ({ num: 9, tipo: "abonos", concepto: "FONDOS FIJOS", estado: "cargada", fuente: "GENERAL", fechaCarga: "2026-09-29", fechaPago: "2026-09-30", operacion: "100001", total: pagos.reduce((a, p) => a + p.monto, 0), pagos });
+  ok("pago cash: la nómina queda por cobrar en banco hasta que se cobra o se devuelve", () => {
+    const transf = { rut: "111111111", nombre: "X", banco: "012", forma: "01", cuenta: "1", monto: 5, estado: "pagado", docs: [] };
+    assert.equal(F.nomStatus(nom([caja("222222222", 139502), caja("44444445", 137380, "cobrado")])).t, "Pagada, 1 por cobrar en banco");
+    assert.equal(F.nomStatus(nom([caja("222222222", 139502), caja("44444445", 137380, "cobrado")])).k, "cobro");
+    assert.equal(F.nomStatus(nom([caja("222222222", 139502, "cobrado"), transf])).t, "Procesada, todo pagado");
+    assert.equal(F.nomStatus(nom([caja("222222222", 139502, "devuelto"), caja("44444445", 137380, "cobrado")])).t, "Procesada, 1 por reintegrar");
+    assert.equal(F.nomStatus(nom([caja("222222222", 139502, "devuelto", { reint: "2026-10-03" })])).t, "Procesada, 1 no cobrado");
+    // Una transferencia (forma 01) o un pago de proveedores no tiene cobro en banco.
+    assert.equal(F.nomStatus(nom([transf])).k, "ok");
+    assert.equal(F.nomStatus({ ...nom([caja("222222222", 1)]), tipo: undefined }).k, "ok");
+  });
+  const r = F.reportePagos([nom([caja("222222222", 139502), caja("44444445", 137380, "cobrado"), caja("333333333", 101000, "devuelto")])], {});
+  ok("pago cash en el reporte: por cobrar aparte, el no cobrado va con los rechazados", () => {
+    assert.deepEqual([r.tot.pagado, r.tot.nPagado, r.tot.porCobrar, r.tot.rechazado, r.tot.nRechazado], [276882, 2, 139502, 101000, 1]);
+    const T = F.reporteTablas(r);
+    assert.deepEqual(T.pagado.body.map(f => f[15]), ["Pendiente de cobro", "Cobrado 02/10/2026"]);
+    assert.equal(T.pagado.foot[15], "Por cobrar $139.502");
+    assert.equal(T.rechazados.body[0][10], "No cobrado en banco, devuelto a la cuenta el 02/10/2026");
+    assert.deepEqual(T.resumen.foot[9], { $: 139502 });
+    const wb = XLSX.read(E.libroReporte(F.reporteHojas(r, {})), { type: "array" });
+    assert.equal(XLSX.utils.sheet_to_json(wb.Sheets.Pagado, { header: 1, defval: "" })[1][15], "Pendiente de cobro");
   });
 }
 
