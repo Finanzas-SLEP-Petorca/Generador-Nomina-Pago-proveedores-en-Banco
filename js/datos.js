@@ -375,14 +375,14 @@ const refN = n => "nomina:" + n.num;
 export const cargarNomina = (id, datosCarga) => modificarNomina(id, n => {
   if (n.estado !== "generada") throw new Conflicto(`La nómina N° ${n.num} ya no está en estado generada`);
   // Quién cargó y cuándo: las reglas exigen que cargadaPor sea quien escribe.
-  return { cambios: { estado: "cargada", ...datosCarga, cargadaPor: st.email, cargadaAt: serverTimestamp() }, hist: [hist("cargar nómina", refN(n), `Cargada en BancoEstado el ${fmtISO(datosCarga.fechaCarga)}, fecha de pago ${fmtISO(datosCarga.fechaPago)}${datosCarga.operacion ? ", operación " + datosCarga.operacion : ""}${datosCarga.obs ? ". " + datosCarga.obs : ""}`, { estado: "generada" }, { estado: "cargada", ...datosCarga })] };
+  return { cambios: { estado: "cargada", ...datosCarga, cargadaPor: st.email, cargadaAt: serverTimestamp() }, hist: [hist("cargar nómina", refN(n), `Cargada en BancoEstado el ${fmtISO(datosCarga.fechaCarga)}, fecha de pago ${fmtISO(datosCarga.fechaPago)}${datosCarga.operacion ? ", N° nómina BancoEstado " + datosCarga.operacion : ""}${datosCarga.obs ? ". " + datosCarga.obs : ""}`, { estado: "generada" }, { estado: "cargada", ...datosCarga })] };
 });
 export const guardarCarga = (id, datosCarga) => modificarNomina(id, n => {
   if (n.estado !== "cargada") throw new Conflicto(`La nómina N° ${n.num} no está cargada`);
   const antes = { fechaCarga: n.fechaCarga, fechaPago: n.fechaPago || "", operacion: n.operacion, obs: n.obs };
   const cambiados = Object.keys(antes).filter(k => S(antes[k]) !== S(datosCarga[k]));
   if (!cambiados.length) return { cambios: {} };
-  const nombres = { fechaCarga: "fecha de carga", fechaPago: "fecha de pago", operacion: "N° de operación", obs: "observación" };
+  const nombres = { fechaCarga: "fecha de carga", fechaPago: "fecha de pago", operacion: "N° de nómina BancoEstado", obs: "observación" };
   return { cambios: datosCarga, hist: [hist("editar datos de carga", refN(n), "Cambia " + cambiados.map(k => nombres[k]).join(", ") + (cambiados.includes("fechaPago") ? `: pago el ${fmtISO(datosCarga.fechaPago)}` : ""), antes, datosCarga)] };
 });
 export const deshacerCarga = id => modificarNomina(id, n => {

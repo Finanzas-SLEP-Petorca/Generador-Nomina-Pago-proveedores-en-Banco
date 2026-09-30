@@ -32,7 +32,7 @@ export function init() {
     const nominas = st.nominas;
     if (!nominas.length) { toast("La bitácora está vacía"); return }
     const q = v => { v = S(v); return /[;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v };
-    const rows = [["N NOMINA", "FUENTE", "FECHA GENERACION", "GENERADA POR", "ESTADO NOMINA", "FECHA CARGA", "CARGADA POR", "FECHA PAGO", "N OPERACION", "RUT", "BENEFICIARIO", "MONTO PAGO", "RESULTADO", "MOTIVO RECHAZO", "REINTEGRADO", "N DOC", "TIPO DOC", "FECHA DOC", "MONTO DOC", "DC", "TIPO NOMINA", "CONCEPTO", "GLOSA"]];
+    const rows = [["N NOMINA", "FUENTE", "FECHA GENERACION", "GENERADA POR", "ESTADO NOMINA", "FECHA CARGA", "CARGADA POR", "FECHA PAGO", "N NOMINA BANCOESTADO", "RUT", "BENEFICIARIO", "MONTO PAGO", "RESULTADO", "MOTIVO RECHAZO", "REINTEGRADO", "N DOC", "TIPO DOC", "FECHA DOC", "MONTO DOC", "DC", "TIPO NOMINA", "CONCEPTO", "GLOSA"]];
     nominas.slice().sort((a, b) => a.num - b.num).forEach(n => { const s = status(n); n.pagos.forEach(p => p.docs.forEach(d => rows.push([n.num, n.fuente, creada(n), n.creadaPor, s.t, fmtISO(n.fechaCarga), n.cargadaPor, fmtISO(n.fechaPago), n.operacion, p.rut, p.nombre, p.monto, n.estado === "anulada" ? "Anulada" : EST_PAGO[p.estado], p.motivo, fmtISO(p.reint), d.ndoc, d.tipo, fmtFecha(d.fecha), d.monto, d.dc, esAbonos(n) ? "REMUNERACIONES" : "PROVEEDORES", d.concepto || n.concepto, d.glosa]))) });
     descargar("bitacora_nominas_" + today() + ".csv", "﻿" + rows.map(r => r.map(q).join(";")).join("\r\n"));
   };
@@ -61,11 +61,14 @@ export function renderBit() {
   // DC: "dc 54", "DC54" o "54" encuentran el documento con DC "DC 54".
   const dcMatch = dc => !!dc && !!qdc && (normDcQ(dc) === qdc || normDcQ(dc) === "dc" + qdc);
   const docMatch = (p, d) => q && ((qd && d.ndoc === qd) || (qr.length >= 7 && p.rut.includes(qr)) || dcMatch(d.dc));
-  const nomMatch = n => !q || n.pagos.some(p => S(p.nombre).toLowerCase().includes(q) || p.docs.some(d => docMatch(p, d))) || String(n.num) === q.replace(/^n.?\s*/, "");
+  // Si lo buscado es el N° que BancoEstado dio a una nómina, se muestra solo esa (aunque el número calce con parte de un RUT).
+  const esBanco = n => !!n.operacion && S(n.operacion).toLowerCase() === q;
+  const porBanco = !!q && nominas.some(esBanco);
+  const nomMatch = n => porBanco ? esBanco(n) : !q || n.pagos.some(p => S(p.nombre).toLowerCase().includes(q) || p.docs.some(d => docMatch(p, d))) || String(n.num) === q.replace(/^n.?\s*/, "");
   let list = st2.filter(x => (!prefs.bitTipo || prefs.bitTipo === "*" || (prefs.bitTipo === "abonos") === esAbonos(x.n)) && (prefs.bitFuente === "*" || x.n.fuente === prefs.bitFuente) && ($("hAnul").checked || x.s.k !== "anulada") && (!bitView || x.s.k === bitView) && nomMatch(x.n));
   list.sort((a, b) => b.n.num - a.n.num);
-  $("tbBit").innerHTML = list.length ? list.map(({ n, s }) => `<tr class="clickable${n.id === openNom ? " cur" : ""}" data-id="${esc(n.id)}" tabindex="0"><td class="mono"><b>${n.num}</b></td><td>${esc(n.fuente)}<span class="hint" style="display:block">${esAbonos(n) ? "Remuneraciones" + (n.concepto ? " · " + esc(n.concepto.toLowerCase()) : "") : "Proveedores"}</span></td><td>${creada(n)}${quien(n.creadaPor)}</td><td>${n.fechaCarga ? fmtISO(n.fechaCarga) : "—"}${n.fechaCarga ? quien(n.cargadaPor) : ""}</td><td>${n.fechaPago ? fmtISO(n.fechaPago) : "—"}</td><td class="num">${n.pagos.length}</td><td class="num">${money(n.total)}</td><td><span class="tag ${s.c}">${esc(s.t)}</span></td></tr>`).join("")
-    : `<tr><td colspan="8" class="empty">${nominas.length ? "Ninguna nómina coincide con el filtro." : "Aún no hay nóminas. Genera la primera en el paso 3."}</td></tr>`;
+  $("tbBit").innerHTML = list.length ? list.map(({ n, s }) => `<tr class="clickable${n.id === openNom ? " cur" : ""}" data-id="${esc(n.id)}" tabindex="0"><td class="mono"><b>${n.num}</b></td><td class="mono">${n.operacion ? `<b>${esc(n.operacion)}</b>` : n.estado === "cargada" ? `<span class="tag wrn" title="Abre la nómina y anota el N° que asignó BancoEstado">Falta</span>` : "—"}</td><td>${esc(n.fuente)}<span class="hint" style="display:block">${esAbonos(n) ? "Remuneraciones" + (n.concepto ? " · " + esc(n.concepto.toLowerCase()) : "") : "Proveedores"}</span></td><td>${creada(n)}${quien(n.creadaPor)}</td><td>${n.fechaCarga ? fmtISO(n.fechaCarga) : "—"}${n.fechaCarga ? quien(n.cargadaPor) : ""}</td><td>${n.fechaPago ? fmtISO(n.fechaPago) : "—"}</td><td class="num">${n.pagos.length}</td><td class="num">${money(n.total)}</td><td><span class="tag ${s.c}">${esc(s.t)}</span></td></tr>`).join("")
+    : `<tr><td colspan="9" class="empty">${nominas.length ? "Ninguna nómina coincide con el filtro." : "Aún no hay nóminas. Genera la primera en el paso 3."}</td></tr>`;
   // Tocar una nómina abre su detalle; tocar la misma otra vez lo cierra.
   $("tbBit").querySelectorAll("tr[data-id]").forEach(tr => {
     const o = () => {
@@ -78,7 +81,7 @@ export function renderBit() {
   });
   // trazabilidad de un documento
   const tr = [];
-  if (q && (qd || qr.length >= 7 || qdc.startsWith("dc"))) {
+  if (q && !porBanco && (qd || qr.length >= 7 || qdc.startsWith("dc"))) {
     const seenDoc = {};
     nominas.slice().sort((a, b) => a.num - b.num).forEach(n => n.pagos.forEach(p => p.docs.forEach(d => { if (!docMatch(p, d)) return; const key = p.rut + "|" + d.tipo + "|" + d.ndoc; (seenDoc[key] = seenDoc[key] || { p, d, h: [] }).h.push({ n, p }) })));
     Object.values(seenDoc).slice(0, 20).forEach(({ p, d, h }) => {
@@ -115,12 +118,12 @@ function renderNomDetail() {
   const due = n.fechaCarga ? resultadoDesde(n, st.config.feriados) : null;
   const pend = n.pagos.filter(p => p.estado === "pendiente").length, pag = n.pagos.filter(p => p.estado === "pagado"), rech = n.pagos.filter(p => p.estado === "rechazado");
   box.innerHTML = `
-  <div class="row" style="margin-top:0;justify-content:space-between"><h2 style="margin:0">Nómina N° ${n.num}, ${esc(n.fuente)}${esAbonos(n) ? ` · remuneraciones${n.concepto ? " (" + esc(n.concepto.toLowerCase()) + ")" : ""}` : ""}</h2><span class="row" style="margin-top:0"><span class="tag ${s.c}">${esc(s.t)}</span><button class="btn small" id="nCerrar" title="Cerrar el detalle">Cerrar ✕</button></span></div>
+  <div class="row" style="margin-top:0;justify-content:space-between"><h2 style="margin:0">Nómina N° ${n.num}${n.operacion ? ` <span class="hint" style="font-size:.7em">· BancoEstado N° ${esc(n.operacion)}</span>` : ""}, ${esc(n.fuente)}${esAbonos(n) ? ` · remuneraciones${n.concepto ? " (" + esc(n.concepto.toLowerCase()) + ")" : ""}` : ""}</h2><span class="row" style="margin-top:0"><span class="tag ${s.c}">${esc(s.t)}</span><button class="btn small" id="nCerrar" title="Cerrar el detalle">Cerrar ✕</button></span></div>
   <p class="due">Generada el ${creada(n)}${n.creadaPor ? ` por <b title="${esc(n.creadaPor)}">${esc(nombreDe(n.creadaPor))}</b>` : ""}.${n.fechaCarga ? ` Cargada en BancoEstado el ${fmtISO(n.fechaCarga)}${n.cargadaPor ? ` por <b title="${esc(n.cargadaPor)}">${esc(nombreDe(n.cargadaPor))}</b>` : ""}.` : ""} Archivo ${esc(nombreNomina(n))}.txt. ${n.pagos.length} pago${n.pagos.length === 1 ? "" : "s"} por ${money(n.total)}.${n.fechaPago ? ` Fecha de pago: ${fmtISO(n.fechaPago)}.` : ""}${cargada ? ` Pagado ${money(pag.reduce((a, p) => a + p.monto, 0))}, rechazado ${money(rech.reduce((a, p) => a + p.monto, 0))}, pendiente de resultado ${money(n.pagos.filter(p => p.estado === "pendiente").reduce((a, p) => a + p.monto, 0))}.` : ""}</p>
   <div class="grid">
     <label>Fecha de carga en BancoEstado<input type="date" id="nFecha" value="${n.fechaCarga || todayISO()}" ${anul ? "disabled" : ""}></label>
     <label title="Día en que el banco paga la nómina. Queda registrada aunque después haya pagos rechazados.">Fecha de pago de la nómina<input type="date" id="nFechaPago" value="${n.fechaPago || diaHabilSiguiente(n.fechaCarga || todayISO(), st.config.feriados)}" ${anul ? "disabled" : ""}></label>
-    <label>N° de operación o folio (opcional)<input id="nOper" value="${esc(n.operacion)}" ${anul ? "disabled" : ""}></label>
+    <label title="El número que BancoEstado asigna a la nómina al cargarla. Sirve para buscarla después en el banco.">N° de nómina BancoEstado<input id="nOper" value="${esc(n.operacion)}" inputmode="numeric" placeholder="Ej. 1234567" ${anul ? "disabled" : ""}></label>
     <label class="wide">Observación<input id="nObs" value="${esc(n.obs)}" ${anul ? "disabled" : ""}></label>
   </div>
   ${due ? `<p class="hint" style="margin-top:8px">Resultado del banco disponible desde el ${fmtDue(due)} (${n.fechaPago ? "14:00 del día de pago de la nómina; si cae en día no hábil, del hábil siguiente" : "día hábil siguiente a la carga"}; considera los feriados de Configuración).</p>` : ""}
@@ -163,7 +166,7 @@ function renderNomDetail() {
     if (!esHabil(d.fechaPago, st.config.feriados) && !confirm(`La fecha de pago ${fmtISO(d.fechaPago)} cae en sábado, domingo o feriado. ¿Guardarla igual?`)) return false;
     return true;
   };
-  if (q("nCargar")) q("nCargar").onclick = () => { const d = datosCarga(); if (!fechasOk(d)) return; accion(q("nCargar"), async () => { await cargarNomina(n.id, d); toast(`Nómina N° ${n.num} marcada como cargada el ${fmtISO(d.fechaCarga)}, con pago el ${fmtISO(d.fechaPago)}. Resultado desde el ${fmtDue(resultadoDesde(d, st.config.feriados))}`) }) };
+  if (q("nCargar")) q("nCargar").onclick = () => { const d = datosCarga(); if (!fechasOk(d)) return; if (!d.operacion) { toast("Indica el N° de nómina que asignó BancoEstado"); q("nOper").focus(); return } accion(q("nCargar"), async () => { await cargarNomina(n.id, d); toast(`Nómina N° ${n.num} marcada como cargada el ${fmtISO(d.fechaCarga)}, con pago el ${fmtISO(d.fechaPago)}. Resultado desde el ${fmtDue(resultadoDesde(d, st.config.feriados))}`) }) };
   if (q("nGuardar")) q("nGuardar").onclick = () => { const d = datosCarga(); if (!fechasOk(d)) return; accion(q("nGuardar"), async () => { await guardarCarga(n.id, d); toast("Cambios guardados") }) };
   if (q("nPagarRest")) q("nPagarRest").onclick = () => { if (Date.now() < due.getTime() && !confirm("Aún no son las 14:00 del día hábil siguiente a la carga. ¿Marcar igual los pendientes como pagados?")) return; accion(q("nPagarRest"), async () => { await pagarPendientes(n.id); toast("Pagos pendientes marcados como pagados") }) };
   q("nTxt").onclick = () => descargar(nombreNomina(n) + ".txt", toTxt(n.lineas));

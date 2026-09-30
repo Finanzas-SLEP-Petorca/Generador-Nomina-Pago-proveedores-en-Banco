@@ -17,7 +17,7 @@
  "imports": {
   "./js/app.js": "./js/app.js?v=77ba9d558b",
   "./js/catalogos.js": "./js/catalogos.js?v=10b7750732",
-  "./js/datos.js": "./js/datos.js?v=be1329dec0",
+  "./js/datos.js": "./js/datos.js?v=fae7eb469b",
   "./js/excel.js": "./js/excel.js?v=45e9b20adf",
   "./js/firebase-config.js": "./js/firebase-config.js?v=ffcd41549c",
   "./js/firebase.js": "./js/firebase.js?v=6eba6d64a6",
@@ -26,11 +26,11 @@
   "./js/ui/abonos.js": "./js/ui/abonos.js?v=e70bc36488",
   "./js/ui/comun.js": "./js/ui/comun.js?v=d2fdaccfc5",
   "./js/ui/config.js": "./js/ui/config.js?v=fc62f90b44",
-  "./js/ui/guia.js": "./js/ui/guia.js?v=486ae09fd1",
+  "./js/ui/guia.js": "./js/ui/guia.js?v=d5bce9aeb1",
   "./js/ui/paso1.js": "./js/ui/paso1.js?v=8963c78bcc",
   "./js/ui/paso2.js": "./js/ui/paso2.js?v=fa97690d6b",
   "./js/ui/paso3.js": "./js/ui/paso3.js?v=aff19918ec",
-  "./js/ui/paso4.js": "./js/ui/paso4.js?v=cfa737bcbb",
+  "./js/ui/paso4.js": "./js/ui/paso4.js?v=a32076c35c",
   "./js/ui/tema.js": "./js/ui/tema.js?v=e5740e8ffa"
  }
 }
@@ -381,13 +381,13 @@
     <div class="bar">
       <label class="toggle" style="color:var(--muted)">Tipo <select id="hTipo"><option value="*">Todas</option><option value="proveedores">Proveedores</option><option value="abonos">Remuneraciones</option></select></label>
       <label class="toggle" style="color:var(--muted)">Fuente <select id="hFuente"></select></label>
-      <input id="hSearch" placeholder="Buscar factura (N° doc), RUT, proveedor o DC" style="max-width:320px">
+      <input id="hSearch" placeholder="Buscar N° doc, RUT, proveedor, DC o N° BancoEstado" style="max-width:340px">
       <span class="sp"></span>
       <label class="toggle" style="color:var(--muted)"><input type="checkbox" id="hAnul"> Ver anuladas</label>
     </div>
     <ul class="trace" id="hTrace"></ul>
     <div class="tablebox"><table>
-      <thead><tr><th>N°</th><th>Fuente</th><th>Generada</th><th>Cargada</th><th>Pago</th><th style="text-align:right">Pagos</th><th style="text-align:right">Total</th><th>Estado</th></tr></thead>
+      <thead><tr><th>N°</th><th title="Número que BancoEstado asigna a la nómina al cargarla">N° BancoEstado</th><th>Fuente</th><th>Generada</th><th>Cargada</th><th>Pago</th><th style="text-align:right">Pagos</th><th style="text-align:right">Total</th><th>Estado</th></tr></thead>
       <tbody id="tbBit"></tbody>
     </table></div>
   </div>

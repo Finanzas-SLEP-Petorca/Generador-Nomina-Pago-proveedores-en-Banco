@@ -194,8 +194,18 @@ try {
   await A.fill("#nFechaPago", iso(jue)); await A.click("#nCargar");
   await esperar(A, () => document.getElementById("toast").textContent.includes("no puede ser anterior"));
   await A.fill("#nFechaPago", iso(lun));
+  await A.click("#nCargar");  // sin N° de nómina BancoEstado no se marca como cargada
+  await esperar(A, () => document.getElementById("toast").textContent.includes("N° de nómina que asignó BancoEstado"));
+  assert.ok((await A.textContent("#hDetail .tag")).includes("Generada"));
+  await A.fill("#nOper", "7654321");
   await A.click("#nCargar");
   await esperar(A, () => document.querySelector("#hDetail .tag")?.textContent.includes("Cargada"));
+  await esperar(A, () => document.querySelector('#tbBit tr[data-id="1"] td:nth-child(2)').textContent === "7654321");
+  assert.ok((await A.textContent("#hDetail h2")).includes("BancoEstado N° 7654321"));
+  await A.fill("#hSearch", "7654321");
+  await esperar(A, () => document.querySelectorAll("#tbBit tr[data-id]").length === 1 && !!document.querySelector('#tbBit tr[data-id="1"]'));
+  await A.fill("#hSearch", "");
+  log("N° de nómina BancoEstado: obligatorio al cargar, visible en la tabla y en el detalle, y se puede buscar");
   await esperar(A, f => document.querySelector('#tbBit tr[data-id="1"]').textContent.includes(f), dmy(lun));
   assert.ok((await A.textContent("#hDetail .due")).includes("Fecha de pago: " + dmy(lun)));
   log("fecha de pago: sugiere el día hábil siguiente, rechaza fechas anteriores a la carga y se ve en la bitácora");
@@ -292,6 +302,7 @@ try {
     // Bitácora: filtro por tipo, carga, rechazo y vuelta a pendientes.
     await A.selectOption("#hTipo", "abonos");
     const filas = await A.$$eval("#tbBit tr[data-id]", t => t.length); assert.equal(filas, 1);
+    await A.fill("#nOper", "7654322");
     await A.click("#nCargar");
     await esperar(A, () => document.querySelector("#hDetail .tag")?.textContent.includes("Cargada"));
     await A.selectOption('#hDetail [data-pe="2"]', "rechazado");

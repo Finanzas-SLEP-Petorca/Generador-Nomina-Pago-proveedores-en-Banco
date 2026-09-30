@@ -68,9 +68,9 @@ const SECCIONES = [
     id: "p4", titulo: "4. Bitácora de nóminas", html: `
     <ul>
       <li>Los <b>contadores</b> de arriba filtran la tabla: generadas sin cargar, esperando resultado, por registrar resultado y con rechazos por reintegrar.</li>
-      <li>El <b>buscador</b> encuentra una factura por N° de documento, RUT, proveedor o DC, y muestra en qué nóminas estuvo.</li>
+      <li>El <b>buscador</b> encuentra una factura por N° de documento, RUT, proveedor o DC, y muestra en qué nóminas estuvo. También encuentra una nómina por su N° BancoEstado.</li>
       <li>Toca una nómina para ver su detalle e historial. Tócala de nuevo, o pulsa <b>Cerrar</b>, para cerrarlo.</li>
-      <li><b>Marcar como cargada:</b> indica la <b>fecha de carga</b>, la <b>fecha de pago</b> (se sugiere el día hábil siguiente), el N° de operación y una observación. Queda registrado quién la cargó.</li>
+      <li><b>Marcar como cargada:</b> indica la <b>fecha de carga</b>, la <b>fecha de pago</b> (se sugiere el día hábil siguiente), el <b>N° de nómina BancoEstado</b> (el número que da el banco al cargarla; es obligatorio y se ve en la tabla) y una observación. Queda registrado quién la cargó.</li>
       <li><b>Resultado:</b> desde las 14:00 del día de pago, marca cada pago como <b>Pagado</b> o <b>Rechazado</b> con su motivo. <b>Marcar pendientes como pagados</b> aplica “Pagado” al resto de una vez.</li>
       <li><b>Volver a pendientes:</b> en un pago rechazado, devuelve sus documentos al paso 2 con la marca “Rechazado en nómina N° X”.</li>
       <li><b>Anular nómina:</b> solo si todavía no se cargó en el banco. Sus documentos vuelven a pendientes y la nómina queda cerrada.</li>
