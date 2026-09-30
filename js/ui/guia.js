@@ -67,7 +67,7 @@ const SECCIONES = [
   {
     id: "p4", titulo: "4. Bitácora de nóminas", html: `
     <ul>
-      <li>Los <b>contadores</b> de arriba filtran la tabla: generadas sin cargar, esperando resultado, por registrar resultado y con rechazos por reintegrar.</li>
+      <li>Los <b>contadores</b> de arriba filtran la tabla: generadas sin cargar, esperando resultado, por registrar resultado, con rechazos por reintegrar y <b>pagadas</b>, con el monto de cada grupo. Con un contador activo, la tabla muestra solo ese grupo: una nómina que cambia de estado pasa a otro contador. Toca el mismo contador otra vez, o <b>Ver todas</b>, para volver a la lista completa.</li>
       <li>El <b>buscador</b> encuentra una factura por N° de documento, RUT, proveedor o DC, y muestra en qué nóminas estuvo. También encuentra una nómina por su N° BancoEstado.</li>
       <li>Toca una nómina para ver su detalle e historial. Tócala de nuevo, o pulsa <b>Cerrar</b>, para cerrarlo.</li>
       <li><b>Marcar como cargada:</b> indica la <b>fecha de carga</b>, la <b>fecha de pago</b> (se sugiere el día hábil siguiente), el <b>N° de nómina BancoEstado</b> (el número que da el banco al cargarla; es obligatorio y se ve en la tabla) y una observación. Queda registrado quién la cargó.</li>
@@ -76,6 +76,7 @@ const SECCIONES = [
       <li><b>Anular nómina:</b> solo si todavía no se cargó en el banco. Sus documentos vuelven a pendientes y la nómina queda cerrada.</li>
       <li><b>Deshacer carga:</b> vuelve a “generada” si ningún pago tiene resultado.</li>
       <li>Puedes descargar otra vez el .txt o el Excel de cualquier nómina, y exportar la bitácora a CSV.</li>
+      <li><b>Reporte de pagos:</b> al final de la Bitácora. Elige el período (por fecha de pago de la nómina), el tipo y la fuente. Muestra lo pagado, lo rechazado y lo pendiente de resultado, y <b>Descargar reporte (Excel)</b> baja el resumen por fuente, el detalle de lo pagado por documento o abono, y los rechazos.</li>
     </ul>`
   },
   {

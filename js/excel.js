@@ -78,3 +78,17 @@ export async function plantillaAbonos() {
   const zip = await plantilla("assets/plantilla_abonos_7col.xlsx");
   return zip.generateAsync({ type: "uint8array", compression: "DEFLATE", mimeType: MIME_XLSX });
 }
+
+// Reporte de pagos: libro simple armado con SheetJS (global XLSX, vendor/xlsx-0.18.5.full.min.js).
+// hojas: [{ nombre, filas, anchos }]; un monto viene como { $: número } y queda con formato de pesos.
+export function libroReporte(hojas) {
+  if (typeof XLSX === "undefined") throw new Error("no se cargó el generador de Excel");
+  const wb = XLSX.utils.book_new();
+  hojas.forEach(h => {
+    const ws = XLSX.utils.aoa_to_sheet(h.filas.map(f => f.map(v => v && typeof v === "object" ? v.$ : v)));
+    h.filas.forEach((f, r) => f.forEach((v, c) => { if (v && typeof v === "object") ws[XLSX.utils.encode_cell({ r, c })].z = '"$"#,##0;-"$"#,##0' }));
+    ws["!cols"] = (h.anchos || []).map(wch => ({ wch }));
+    XLSX.utils.book_append_sheet(wb, ws, h.nombre);
+  });
+  return new Uint8Array(XLSX.write(wb, { type: "array", bookType: "xlsx" }));
+}

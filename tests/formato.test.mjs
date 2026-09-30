@@ -274,6 +274,44 @@ ok("abonos: importar la hoja DETALLE del banco y filas pegadas", () => {
   });
 }
 
+// Reporte de pagos: filtra por fecha de pago (o de carga en las antiguas), suma por estado y arma el Excel.
+{
+  const E = await import(path.join(raiz, "js/excel.js"));
+  const pago = (rut, monto, estado, docs, extra = {}) => ({ rut, nombre: "BEN " + rut, banco: "012", cuenta: "1", monto, estado, motivo: estado === "rechazado" ? "cuenta cerrada" : "", reint: "", docs, ...extra });
+  const nominas = [
+    { num: 1, estado: "cargada", fuente: "SEP", fechaCarga: "2026-09-25", fechaPago: "2026-09-28", operacion: "900", total: 1500, pagos: [pago("111111111", 1000, "pagado", [{ ndoc: "10", tipo: "33", fecha: "01092026", monto: 1200, dc: "DC 5" }, { ndoc: "3", tipo: "61", fecha: "02092026", monto: 200 }]), pago("123456785", 500, "rechazado", [{ ndoc: "11", tipo: "33", fecha: "01092026", monto: 500 }])] },
+    { num: 2, estado: "cargada", fuente: "GENERAL", tipo: "abonos", concepto: "VIATICOS", fechaCarga: "2026-09-29", fechaPago: "2026-09-30", operacion: "901", total: 300, pagos: [pago("111111111", 300, "pagado", [{ monto: 300, concepto: "VIATICOS", glosa: "Comisión" }])] },
+    { num: 3, estado: "cargada", fuente: "SEP", fechaCarga: "2026-09-30", fechaPago: "", total: 70, pagos: [pago("111111111", 70, "pendiente", [{ ndoc: "12", tipo: "33", fecha: "01092026", monto: 70 }])] },
+    { num: 4, estado: "generada", fuente: "SEP", fechaCarga: "", fechaPago: "", total: 5, pagos: [pago("111111111", 5, "pendiente", [])] },
+    { num: 5, estado: "cargada", fuente: "SEP", fechaCarga: "2026-08-28", fechaPago: "2026-08-31", total: 9, pagos: [pago("111111111", 9, "pagado", [{ ndoc: "1", tipo: "33", fecha: "01082026", monto: 9 }])] },
+  ];
+  const r = F.reportePagos(nominas, { desde: "2026-09-01", hasta: "2026-09-30" });
+  ok("reporte de pagos: período por fecha de pago, sin generadas, montos por estado", () => {
+    assert.deepEqual(r.nominas.map(n => n.num), [1, 2, 3]);  // la 3 sin fecha de pago usa la de carga; la 4 no se cargó; la 5 es de agosto
+    assert.deepEqual(r.tot, { nominas: 3, pagado: 1300, nPagado: 2, rechazado: 500, nRechazado: 1, pendiente: 70, nPendiente: 1 });
+    assert.deepEqual(r.resumen.map(g => [g.tipo, g.fuente, g.pagado]), [["Proveedores", "SEP", 1000], ["Remuneraciones", "GENERAL", 300]]);
+    assert.deepEqual(F.reportePagos(nominas, { desde: "2026-09-01", hasta: "2026-09-30", tipo: "abonos" }).nominas.map(n => n.num), [2]);
+    assert.deepEqual(F.reportePagos(nominas, { fuente: "SEP" }).nominas.map(n => n.num), [5, 1, 3]);
+  });
+  const wb = XLSX.read(E.libroReporte(F.reporteHojas(r, { desde: "2026-09-01", hasta: "2026-09-30", generado: "30/09/2026 15:00", por: "Wilson Rojas" })), { type: "array", cellNF: true });
+  ok("reporte de pagos: Excel con resumen, detalle pagado por documento y rechazos", () => {
+    assert.deepEqual(wb.SheetNames, ["Resumen", "Pagado", "Rechazados"]);
+    const hoja = n => XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: "" });
+    const pg = hoja("Pagado");
+    assert.equal(pg.length, 1 + 3 + 1); // encabezado, 2 documentos de la nómina 1, 1 abono, total
+    assert.deepEqual(pg[1].slice(0, 7), ["28/09/2026", 1, "900", "Proveedores", "SEP", "11.111.111-1", "BEN 111111111"]);
+    assert.deepEqual([pg[1][13], pg[1][14], pg[2][13], pg[2][14]], [1200, 1000, -200, ""]); // la NC resta y el pago va una vez
+    assert.deepEqual([pg[3][9], pg[3][12], pg[3][14]], ["VIATICOS", "Comisión", 300]);
+    assert.equal(pg[4][14], 1300);
+    assert.equal(wb.Sheets.Pagado.O2.z, '"$"#,##0;-"$"#,##0');
+    const rc = hoja("Rechazados");
+    assert.deepEqual([rc[1][1], rc[1][9], rc[1][10], rc[1][11]], [1, 500, "cuenta cerrada", "No"]);
+    const rs = hoja("Resumen");
+    assert.equal(rs[1][1], "01/09/2026 al 30/09/2026");
+    assert.deepEqual(rs.find(f => f[0] === "TOTAL").slice(2, 9), [3, 2, 1300, 1, 500, 1, 70]);
+  });
+}
+
 ok("index.html con las versiones de los archivos al día", () => {
   const { execFileSync } = require("node:child_process");
   execFileSync(process.execPath, [path.join(raiz, "tests/versionar.mjs"), "--revisar"], { stdio: "pipe" });

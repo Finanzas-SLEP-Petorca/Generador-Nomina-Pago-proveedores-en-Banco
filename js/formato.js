@@ -295,3 +295,69 @@ export function conceptoDeNombre(nombre) {
   if (/REMUNERA|SUELDO/.test(t)) return "REMUNERACIONES";
   return "";
 }
+
+// =====================================================================
+// Reporte de pagos: lo que el banco ya pagó, por fecha de pago de la
+// nómina (en las nóminas antiguas sin fecha de pago, la de carga).
+// =====================================================================
+
+export const fechaReporte = n => n.fechaPago || n.fechaCarga || "";
+
+export function reportePagos(nominas, { desde = "", hasta = "", fuente = "*", tipo = "*" } = {}) {
+  const sel = nominas.filter(n => n.estado === "cargada"
+    && (fuente === "*" || n.fuente === fuente)
+    && (tipo === "*" || (tipo === "abonos") === (n.tipo === "abonos"))
+    && (!desde || fechaReporte(n) >= desde) && (!hasta || fechaReporte(n) <= hasta))
+    .sort((a, b) => fechaReporte(a).localeCompare(fechaReporte(b)) || a.num - b.num);
+  const cero = () => ({ nominas: 0, pagado: 0, nPagado: 0, rechazado: 0, nRechazado: 0, pendiente: 0, nPendiente: 0 });
+  const tot = cero(), grupos = {}, pagados = [], rechazados = [];
+  sel.forEach(n => {
+    const tipoN = n.tipo === "abonos" ? "Remuneraciones" : "Proveedores";
+    const g = grupos[tipoN + "|" + n.fuente] = grupos[tipoN + "|" + n.fuente] || { tipo: tipoN, fuente: n.fuente, ...cero() };
+    g.nominas++; tot.nominas++;
+    n.pagos.forEach(p => {
+      const k = p.estado === "pagado" ? "pagado" : p.estado === "rechazado" ? "rechazado" : "pendiente";
+      const nk = "n" + k[0].toUpperCase() + k.slice(1);
+      g[k] += p.monto; g[nk]++; tot[k] += p.monto; tot[nk]++;
+      if (k === "pagado") pagados.push({ n, p }); else if (k === "rechazado") rechazados.push({ n, p });
+    });
+  });
+  const resumen = Object.values(grupos).sort((a, b) => a.tipo.localeCompare(b.tipo) || a.fuente.localeCompare(b.fuente));
+  return { nominas: sel, resumen, tot, pagados, rechazados };
+}
+
+// Hojas del Excel del reporte (filas listas para SheetJS). Los montos van como { $: número }
+// para que el Excel les dé formato de pesos y se puedan sumar.
+const $m = v => ({ $: v });
+export function reporteHojas(rep, { desde = "", hasta = "", generado = "", por = "" } = {}) {
+  const periodo = desde || hasta ? `${desde ? fmtISO(desde) : "inicio"} al ${hasta ? fmtISO(hasta) : "hoy"}` : "todas las fechas";
+  const tipoN = n => n.tipo === "abonos" ? "Remuneraciones" : "Proveedores";
+  const t = rep.tot;
+  const resumen = [
+    ["REPORTE DE PAGOS BANCOESTADO"], ["Período (fecha de pago)", periodo], ["Generado", generado + (por ? " por " + por : "")], [],
+    ["TIPO", "FUENTE", "NÓMINAS", "PAGOS PAGADOS", "MONTO PAGADO", "RECHAZADOS", "MONTO RECHAZADO", "PENDIENTES", "MONTO PENDIENTE"],
+    ...rep.resumen.map(g => [g.tipo, g.fuente, g.nominas, g.nPagado, $m(g.pagado), g.nRechazado, $m(g.rechazado), g.nPendiente, $m(g.pendiente)]),
+    ["TOTAL", "", t.nominas, t.nPagado, $m(t.pagado), t.nRechazado, $m(t.rechazado), t.nPendiente, $m(t.pendiente)], [],
+    ["NÓMINAS DEL PERÍODO"],
+    ["N° NÓMINA", "N° BANCOESTADO", "TIPO", "FUENTE", "CONCEPTO", "FECHA CARGA", "FECHA PAGO", "CARGADA POR", "PAGOS", "TOTAL", "PAGADO", "RECHAZADO", "PENDIENTE"],
+    ...rep.nominas.map(n => {
+      const suma = e => n.pagos.filter(p => p.estado === e).reduce((s, p) => s + p.monto, 0);
+      return [n.num, S(n.operacion), tipoN(n), n.fuente, S(n.concepto), fmtISO(n.fechaCarga), fmtISO(n.fechaPago), S(n.cargadaPor), n.pagos.length, $m(n.total), $m(suma("pagado")), $m(suma("rechazado")), $m(suma("pendiente"))];
+    }),
+  ];
+  const pagado = [["FECHA PAGO", "N° NÓMINA", "N° BANCOESTADO", "TIPO", "FUENTE", "RUT", "BENEFICIARIO", "BANCO", "CUENTA", "N° DOC / CONCEPTO", "TIPO DOC", "FECHA DOC", "DC / GLOSA", "MONTO DOCUMENTO", "TOTAL PAGO"]];
+  rep.pagados.forEach(({ n, p }) => p.docs.forEach((d, i) => pagado.push([
+    fmtISO(fechaReporte(n)), n.num, S(n.operacion), tipoN(n), n.fuente, fmtRut(p.rut), p.nombre, M_BANCO[p.banco] || S(p.banco), S(p.cuenta),
+    n.tipo === "abonos" ? S(d.concepto || n.concepto) : S(d.ndoc), n.tipo === "abonos" ? "" : (M_TIPO[d.tipo] ? d.tipo + " " + M_TIPO[d.tipo] : S(d.tipo)),
+    n.tipo === "abonos" ? "" : fmtFecha(d.fecha), n.tipo === "abonos" ? S(d.glosa) : S(d.dc),
+    $m(NC.has(d.tipo) ? -d.monto : d.monto), i === 0 ? $m(p.monto) : null])));
+  pagado.push(["TOTAL PAGADO", "", "", "", "", "", "", "", "", "", "", "", "", null, $m(t.pagado)]);
+  const rech = [["FECHA PAGO", "N° NÓMINA", "N° BANCOESTADO", "TIPO", "FUENTE", "RUT", "BENEFICIARIO", "BANCO", "CUENTA", "MONTO", "MOTIVO", "REINTEGRADO A PENDIENTES"]];
+  rep.rechazados.forEach(({ n, p }) => rech.push([fmtISO(fechaReporte(n)), n.num, S(n.operacion), tipoN(n), n.fuente, fmtRut(p.rut), p.nombre, M_BANCO[p.banco] || S(p.banco), S(p.cuenta), $m(p.monto), S(p.motivo), p.reint ? fmtISO(p.reint) : "No"]));
+  rech.push(["TOTAL RECHAZADO", "", "", "", "", "", "", "", "", $m(t.rechazado)]);
+  return [
+    { nombre: "Resumen", filas: resumen, anchos: [16, 16, 16, 16, 16, 14, 16, 22, 10, 14, 14, 14, 14] },
+    { nombre: "Pagado", filas: pagado, anchos: [11, 10, 14, 15, 12, 13, 34, 26, 14, 18, 22, 11, 14, 16, 14] },
+    { nombre: "Rechazados", filas: rech, anchos: [11, 10, 14, 15, 12, 13, 34, 26, 14, 14, 30, 14] },
+  ];
+}

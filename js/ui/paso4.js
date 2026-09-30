@@ -1,8 +1,8 @@
 // Paso 4: bitácora de nóminas, resultado del banco e historial.
 
 import { M_TIPO, EST_PAGO } from "../catalogos.js";
-import { S, normRut, fmtRut, money, fmtFecha, fmtISO, isoLocal, todayISO, resultadoDesde, fmtDue, diaHabilSiguiente, esHabil, nombreDe, nomStatus, nombreNomina, toTxt, today } from "../formato.js";
-import { bankWorkbook, abonosWorkbook } from "../excel.js";
+import { S, normRut, fmtRut, money, fmtFecha, fmtISO, isoLocal, todayISO, resultadoDesde, fmtDue, diaHabilSiguiente, esHabil, nombreDe, nomStatus, nombreNomina, toTxt, today, reportePagos, reporteHojas } from "../formato.js";
+import { bankWorkbook, abonosWorkbook, libroReporte } from "../excel.js";
 import { M_FORMA_ABONO } from "../catalogos.js";
 import { st, aFecha, suscribirHistorial, cargarNomina, guardarCarga, deshacerCarga, resultadoPago, pagarPendientes, volverPendientes, anularNomina, exportarRespaldo } from "../datos.js";
 import { $, esc, toast, accion, descargar, prefs, guardarPrefs, mensajeError } from "./comun.js";
@@ -17,6 +17,13 @@ const creada = n => { const d = aFecha(n.creadaAt); return d ? fmtISO(isoLocal(d
 // Nombre corto bajo la fecha en la tabla (el correo completo queda en el título).
 const quien = email => email ? `<span class="hint" style="display:block" title="${esc(email)}">${esc(nombreDe(email))}</span>` : "";
 const normDcQ = v => S(v).toLowerCase().replace(/\s+/g, "");
+const TARJETAS = [["generada", "Generadas sin cargar"], ["espera", "Esperando resultado"], ["revisar", "Por registrar resultado"], ["reintegrar", "Con rechazos por reintegrar"], ["ok", "Pagadas"]];
+const pagadoDe = n => n.pagos.filter(p => p.estado === "pagado").reduce((a, p) => a + p.monto, 0);
+
+// Período del reporte de pagos: por defecto, el mes en curso.
+const hoy = () => todayISO();
+const mesDe = (d, delta = 0) => { const a = new Date(d.getFullYear(), d.getMonth() + delta, 1), b = new Date(d.getFullYear(), d.getMonth() + delta + 1, 0); return [todayISO(a), todayISO(b)] };
+let rep = { periodo: mesDe(new Date()), tipo: "*", fuente: "*" };
 
 export function abrirNomina(id) { openNom = id; renderBit() }
 
@@ -36,6 +43,25 @@ export function init() {
     nominas.slice().sort((a, b) => a.num - b.num).forEach(n => { const s = status(n); n.pagos.forEach(p => p.docs.forEach(d => rows.push([n.num, n.fuente, creada(n), n.creadaPor, s.t, fmtISO(n.fechaCarga), n.cargadaPor, fmtISO(n.fechaPago), n.operacion, p.rut, p.nombre, p.monto, n.estado === "anulada" ? "Anulada" : EST_PAGO[p.estado], p.motivo, fmtISO(p.reint), d.ndoc, d.tipo, fmtFecha(d.fecha), d.monto, d.dc, esAbonos(n) ? "REMUNERACIONES" : "PROVEEDORES", d.concepto || n.concepto, d.glosa]))) });
     descargar("bitacora_nominas_" + today() + ".csv", "﻿" + rows.map(r => r.map(q).join(";")).join("\r\n"));
   };
+  $("btnIrReporte").onclick = () => $("cardReporte").scrollIntoView({ behavior: "smooth", block: "start" });
+  $("bitFiltro").onclick = e => { if (e.target.closest("[data-vertodas]")) { bitView = ""; renderBit() } };
+  $("rDesde").onchange = () => { rep.periodo = [$("rDesde").value, rep.periodo[1]]; renderReporte() };
+  $("rHasta").onchange = () => { rep.periodo = [rep.periodo[0], $("rHasta").value]; renderReporte() };
+  $("rTipo").onchange = () => { rep.tipo = $("rTipo").value; renderReporte() };
+  $("rFuente").onchange = () => { rep.fuente = $("rFuente").value; renderReporte() };
+  document.querySelectorAll("[data-rper]").forEach(b => b.onclick = () => {
+    const k = b.dataset.rper;
+    rep.periodo = k === "hoy" ? [hoy(), hoy()] : k === "mes" ? mesDe(new Date()) : k === "ant" ? mesDe(new Date(), -1) : ["", ""];
+    renderReporte();
+  });
+  $("btnReporte").onclick = () => {
+    const r = reportePagos(st.nominas, filtroReporte());
+    if (!r.nominas.length) { toast("No hay nóminas cargadas con fecha de pago en ese período"); return }
+    const [d, h] = rep.periodo;
+    const nombre = "reporte_pagos_" + (d || h ? (d || "inicio").replace(/-/g, "") + "_" + (h || "hoy").replace(/-/g, "") : "todo") + ".xlsx";
+    try { descargar(nombre, libroReporte(reporteHojas(r, { desde: d, hasta: h, generado: fmtISO(todayISO()) + " " + new Date().toTimeString().slice(0, 5), por: nombreDe(st.email) }))) }
+    catch (e) { toast("No se pudo armar el reporte: " + mensajeError(e)) }
+  };
   $("btnBackup").onclick = () => descargar("respaldo_panel_pago_" + today() + ".json", JSON.stringify(exportarRespaldo(), null, 1));
 }
 
@@ -52,8 +78,11 @@ export function renderBit() {
   const nominas = st.nominas;
   const st2 = nominas.map(n => ({ n, s: status(n) }));
   const cnt = k => st2.filter(x => x.s.k === k).length;
-  const cards = [["generada", "Generadas sin cargar"], ["espera", "Esperando resultado"], ["revisar", "Por registrar resultado"], ["reintegrar", "Con rechazos por reintegrar"]];
-  $("bitStats").innerHTML = cards.map(([k, t]) => `<button class="stat" data-k="${k}" aria-pressed="${bitView === k}"><b>${cnt(k)}</b><span>${t}</span></button>`).join("");
+  // Cada tarjeta filtra la tabla; en "Pagadas" el monto es lo pagado, en el resto el total de las nóminas.
+  const monto = k => st2.filter(x => x.s.k === k).reduce((a, x) => a + (k === "ok" ? pagadoDe(x.n) : x.n.total), 0);
+  $("bitStats").innerHTML = TARJETAS.map(([k, t]) => `<button class="stat" data-k="${k}" aria-pressed="${bitView === k}" title="${bitView === k ? "Toca de nuevo para ver todas" : "Ver solo estas nóminas"}"><b>${cnt(k)}</b><span>${t}</span><small>${money(monto(k))}</small></button>`).join("");
+  const fil = $("bitFiltro"); fil.hidden = !bitView;
+  if (bitView) fil.innerHTML = `Mostrando solo <b>${esc(TARJETAS.find(c => c[0] === bitView)[1].toLowerCase())}</b>. <button class="btn small" data-vertodas>Ver todas</button>`;
   $("bitStats").querySelectorAll(".stat").forEach(b => b.onclick = () => { bitView = bitView === b.dataset.k ? "" : b.dataset.k; renderBit() });
   const fus = [...new Set(nominas.map(n => n.fuente))];
   $("hFuente").innerHTML = `<option value="*">Todas</option>` + fus.map(f => `<option value="${esc(f)}"${f === prefs.bitFuente ? " selected" : ""}>${esc(f)}</option>`).join("");
@@ -93,6 +122,24 @@ export function renderBit() {
   $("hTrace").innerHTML = tr.join("");
   $("hTrace").querySelectorAll("[data-go]").forEach(a => a.onclick = () => { openNom = a.dataset.go; renderBit() });
   renderNomDetail();
+  renderReporte();
+}
+
+const filtroReporte = () => ({ desde: rep.periodo[0], hasta: rep.periodo[1], tipo: rep.tipo, fuente: rep.fuente });
+
+// Reporte de pagos: resumen en pantalla del período elegido (se actualiza en tiempo real).
+function renderReporte() {
+  $("rDesde").value = rep.periodo[0]; $("rHasta").value = rep.periodo[1]; $("rTipo").value = rep.tipo;
+  const fus = [...new Set(st.nominas.map(n => n.fuente))];
+  if (rep.fuente !== "*" && !fus.includes(rep.fuente)) rep.fuente = "*";
+  $("rFuente").innerHTML = `<option value="*">Todas</option>` + fus.map(f => `<option value="${esc(f)}"${f === rep.fuente ? " selected" : ""}>${esc(f)}</option>`).join("");
+  const r = reportePagos(st.nominas, filtroReporte()), t = r.tot;
+  $("rKpis").innerHTML = `<div class="kpi hero"><span class="kpi-t">Pagado</span><b>${money(t.pagado)}</b><small>${t.nPagado} pago${t.nPagado === 1 ? "" : "s"} en ${t.nominas} nómina${t.nominas === 1 ? "" : "s"}</small></div>`
+    + `<div class="kpi"><span class="kpi-t">Rechazado</span><b>${money(t.rechazado)}</b><small>${t.nRechazado} pago${t.nRechazado === 1 ? "" : "s"}</small></div>`
+    + `<div class="kpi"><span class="kpi-t">Pendiente de resultado</span><b>${money(t.pendiente)}</b><small>${t.nPendiente} pago${t.nPendiente === 1 ? "" : "s"}</small></div>`;
+  $("tbReporte").innerHTML = r.resumen.length ? r.resumen.map(g => `<tr><td>${g.tipo}</td><td>${esc(g.fuente)}</td><td class="num">${g.nominas}</td><td class="num"><b>${money(g.pagado)}</b></td><td class="num">${money(g.rechazado)}</td><td class="num">${money(g.pendiente)}</td></tr>`).join("")
+    + (r.resumen.length > 1 ? `<tr><td colspan="2"><b>Total</b></td><td class="num"><b>${t.nominas}</b></td><td class="num"><b>${money(t.pagado)}</b></td><td class="num"><b>${money(t.rechazado)}</b></td><td class="num"><b>${money(t.pendiente)}</b></td></tr>` : "")
+    : `<tr><td colspan="6" class="empty">No hay nóminas cargadas con fecha de pago en este período.</td></tr>`;
 }
 
 const escribiendo = () => { const a = document.activeElement; return $("hDetail").contains(a) && (a.tagName === "INPUT" || a.tagName === "TEXTAREA") };
@@ -168,7 +215,7 @@ function renderNomDetail() {
   };
   if (q("nCargar")) q("nCargar").onclick = () => { const d = datosCarga(); if (!fechasOk(d)) return; if (!d.operacion) { toast("Indica el N° de nómina que asignó BancoEstado"); q("nOper").focus(); return } accion(q("nCargar"), async () => { await cargarNomina(n.id, d); toast(`Nómina N° ${n.num} marcada como cargada el ${fmtISO(d.fechaCarga)}, con pago el ${fmtISO(d.fechaPago)}. Resultado desde el ${fmtDue(resultadoDesde(d, st.config.feriados))}`) }) };
   if (q("nGuardar")) q("nGuardar").onclick = () => { const d = datosCarga(); if (!fechasOk(d)) return; accion(q("nGuardar"), async () => { await guardarCarga(n.id, d); toast("Cambios guardados") }) };
-  if (q("nPagarRest")) q("nPagarRest").onclick = () => { if (Date.now() < due.getTime() && !confirm("Aún no son las 14:00 del día hábil siguiente a la carga. ¿Marcar igual los pendientes como pagados?")) return; accion(q("nPagarRest"), async () => { await pagarPendientes(n.id); toast("Pagos pendientes marcados como pagados") }) };
+  if (q("nPagarRest")) q("nPagarRest").onclick = () => { if (Date.now() < due.getTime() && !confirm("Aún no es la hora del resultado del banco (14:00 del día de pago). ¿Marcar igual los pendientes como pagados?")) return; accion(q("nPagarRest"), async () => { await pagarPendientes(n.id); const sinR = n.pagos.some(p => p.estado === "rechazado" && !p.reint); toast(`Pagos pendientes marcados como pagados. La nómina N° ${n.num} queda en «${sinR ? "Con rechazos por reintegrar" : "Pagadas"}».`) }) };
   q("nTxt").onclick = () => descargar(nombreNomina(n) + ".txt", toTxt(n.lineas));
   q("nXlsx").onclick = () => accion(q("nXlsx"), async () => { try { descargar(nombreNomina(n) + ".xlsx", await (esAbonos(n) ? abonosWorkbook : bankWorkbook)(n.lineas)) } catch (e) { toast("No se pudo armar el Excel: " + mensajeError(e)) } });
   if (q("nAnular")) q("nAnular").onclick = () => { if (!confirm(`¿Anular la nómina N° ${n.num}? Sus ${n.pagos.reduce((a, p) => a + p.docs.length, 0)} ${esAbonos(n) ? "abonos" : "documentos"} vuelven a pendientes. Hazlo solo si no se cargó en el banco.`)) return; accion(q("nAnular"), async () => { await anularNomina(n.id); toast(`Nómina anulada; ${esAbonos(n) ? "abonos de vuelta en la pestaña Remuneraciones" : "documentos de vuelta en pendientes"}`) }) };

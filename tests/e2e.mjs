@@ -6,6 +6,7 @@ import { chromium } from "playwright";
 import { spawn } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 
 const REPO = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
 const AQUI = new URL("./.generado/", import.meta.url).pathname; // salidas y Firebase empaquetado
@@ -219,8 +220,36 @@ try {
   await esperar(A, () => document.querySelector('#hDetail [data-pr="1"]'));
   await A.click('#hDetail [data-pr="1"]');
   await esperar(A, () => document.getElementById("cntDocs").textContent === "2/2");
+  // Con la tarjeta "Esperando resultado" activa, la nómina pagada sale de la tabla y pasa a "Pagadas".
+  await A.click('#bitStats .stat[data-k="espera"]');
+  await esperar(A, () => !!document.querySelector('#tbBit tr[data-id="1"]') && !document.getElementById("bitFiltro").hidden);
   await A.click("#nPagarRest");
   await esperar(A, () => /Procesada/.test(document.querySelector("#hDetail .tag")?.textContent));
+  await esperar(A, () => !document.querySelector('#tbBit tr[data-id="1"]') && document.getElementById("bitFiltro").textContent.includes("esperando resultado"));
+  assert.match(await toastTxt(A), /queda en «Pagadas»/);
+  await A.click('#bitStats .stat[data-k="ok"]');
+  await esperar(A, () => !!document.querySelector('#tbBit tr[data-id="1"]') && document.querySelector('#bitStats .stat[data-k="ok"] b').textContent === "1");
+  const pagadoTarjeta = await A.textContent('#bitStats .stat[data-k="ok"] small');
+  await A.click("#bitFiltro [data-vertodas]");
+  await esperar(A, () => document.getElementById("bitFiltro").hidden && document.querySelectorAll("#tbBit tr[data-id]").length === 3);
+  log("tarjeta Pagadas:", pagadoTarjeta, "; con un filtro activo se avisa y 'Ver todas' vuelve a la lista completa");
+  // Reporte de pagos: la nómina 1 se paga el lunes calculado, que puede caer el mes siguiente; "Todo" la incluye.
+  await A.click('[data-rper="todo"]');
+  await esperar(A, t => document.querySelector("#rKpis .hero b").textContent === t, pagadoTarjeta);
+  const rep = await descarga(A, () => A.click("#btnReporte"));
+  assert.equal(rep.nombre, "reporte_pagos_todo.xlsx");
+  {
+    const XLSX = createRequire(import.meta.url)(REPO + "/vendor/xlsx-0.18.5.full.min.js");
+    const wb = XLSX.read(rep.bytes, { type: "buffer" });
+    assert.deepEqual(wb.SheetNames, ["Resumen", "Pagado", "Rechazados"]);
+    const pg = XLSX.utils.sheet_to_json(wb.Sheets.Pagado, { header: 1, raw: true, defval: "" });
+    const total = pg.at(-1)[14];
+    assert.equal("$" + total.toLocaleString("es-CL"), pagadoTarjeta);
+    assert.ok(pg.slice(1, -1).every(f => f[1] === 1 && f[2] === "7654321"));
+    const rc = XLSX.utils.sheet_to_json(wb.Sheets.Rechazados, { header: 1, raw: true, defval: "" });
+    assert.equal(rc[1][10], "cuenta inexistente");
+    log("reporte de pagos:", rep.nombre, "con", pg.length - 2, "documentos pagados por", pagadoTarjeta, "y", rc.length - 2, "rechazo");
+  }
   await esperar(A, () => document.querySelectorAll("#nHist li").length >= 5);
   const histN1 = await A.$$eval("#nHist li b", b => b.map(x => x.textContent));
   assert.ok((await A.textContent("#nHist")).includes("fecha de pago " + dmy(lun)));
