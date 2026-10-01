@@ -14,6 +14,9 @@ maestro_*.csv
 *.csv
 !assets/*.xlsx
 
+# Comprobantes y detalles de transferencias de BancoEstado (traen datos reales).
+*.pdf
+
 # Copia local de las reglas con los correos reales.
 firestore/*.local.rules
 

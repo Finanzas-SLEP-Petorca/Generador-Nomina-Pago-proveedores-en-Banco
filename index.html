@@ -8,7 +8,7 @@
 <link rel="icon" type="image/png" href="assets/logo_slep_petorca.png">
 <!-- Tema elegido (Claro/Oscuro/Sistema) aplicado antes de pintar, para no parpadear -->
 <script>try{var t=localStorage.getItem("pago.tema");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
-<link rel="stylesheet" href="css/panel.css?v=8320def1ab">
+<link rel="stylesheet" href="css/panel.css?v=19a480f902">
 <!-- SheetJS y JSZip con versión fijada (copias en vendor/) -->
 <script src="vendor/xlsx-0.18.5.full.min.js" defer></script>
 <script src="vendor/jszip-3.10.1.min.js" defer></script>
@@ -17,24 +17,26 @@
  "imports": {
   "./js/app.js": "./js/app.js?v=275baba948",
   "./js/catalogos.js": "./js/catalogos.js?v=10b7750732",
+  "./js/comprobante.js": "./js/comprobante.js?v=17ee76dc2b",
   "./js/conciliar.js": "./js/conciliar.js?v=8b7e7124ec",
-  "./js/datos.js": "./js/datos.js?v=b6f194515d",
+  "./js/datos.js": "./js/datos.js?v=012d951eb9",
   "./js/excel.js": "./js/excel.js?v=3978c92e6c",
   "./js/firebase-config.js": "./js/firebase-config.js?v=ffcd41549c",
   "./js/firebase.js": "./js/firebase.js?v=6eba6d64a6",
   "./js/formato.js": "./js/formato.js?v=287c26045a",
   "./js/importar.js": "./js/importar.js?v=51b36dd698",
+  "./js/ocr.js": "./js/ocr.js?v=c001276870",
   "./js/pdf.js": "./js/pdf.js?v=4fbd5ef8d0",
   "./js/ui/abonos.js": "./js/ui/abonos.js?v=e70bc36488",
   "./js/ui/comun.js": "./js/ui/comun.js?v=e11c0a4e36",
   "./js/ui/config.js": "./js/ui/config.js?v=3083003dbd",
-  "./js/ui/guia.js": "./js/ui/guia.js?v=b46c3a5deb",
+  "./js/ui/guia.js": "./js/ui/guia.js?v=75693c742a",
   "./js/ui/paso1.js": "./js/ui/paso1.js?v=8963c78bcc",
   "./js/ui/paso2.js": "./js/ui/paso2.js?v=fa97690d6b",
   "./js/ui/paso3.js": "./js/ui/paso3.js?v=aff19918ec",
   "./js/ui/paso4.js": "./js/ui/paso4.js?v=569c923d74",
   "./js/ui/tema.js": "./js/ui/tema.js?v=e5740e8ffa",
-  "./js/ui/transferencia.js": "./js/ui/transferencia.js?v=b5527d9ccc"
+  "./js/ui/transferencia.js": "./js/ui/transferencia.js?v=c90dfa6b86"
  }
 }
 </script>
@@ -504,47 +506,62 @@
     <button class="btn small" id="tefCerrar" type="button">Cerrar ✕</button>
   </div>
   <form class="gen-cuerpo tef-cuerpo" id="tefForm" method="dialog" novalidate>
-    <p class="hint" style="margin-top:0">Copia los datos del comprobante o detalle de la transferencia de BancoEstado. Queda en la bitácora como <b>pagada</b>, con el mismo correlativo de las nóminas.</p>
-    <h3>Comprobante</h3>
-    <div class="grid">
-      <label>N° de transferencia *<input id="tNum" inputmode="numeric" placeholder="Ej. 1234567" autocomplete="off"></label>
-      <label>ID TEF<input id="tIdTef" inputmode="numeric" autocomplete="off"></label>
-      <label>Fecha de la transacción *<input type="date" id="tFecha"></label>
-      <label>Hora<input type="time" id="tHora"></label>
-      <label>Cuenta de origen *<select id="tCuenta"></select></label>
-      <label id="tCuentaOtraL" hidden>N° de la otra cuenta *<input id="tCuentaOtra" inputmode="numeric" autocomplete="off"></label>
-      <label>Fuente *<select id="tFuente"></select></label>
+    <div class="tef-pdf" id="tPdfZona">
+      <span class="btn primary file">Subir comprobante PDF<input type="file" id="tPdf" accept=".pdf,application/pdf" multiple></span>
+      <p class="hint" id="tPdfEstado">El <b>Comprobante</b> o el <b>Detalle de Transferencia Electrónica</b> que descargas de BancoEstado. Puedes elegir o soltar varios: el panel lee los datos y tú solo revisas qué paga. Queda en la bitácora como <b>pagada</b>, con el mismo correlativo de las nóminas.</p>
+      <button class="btn small" id="tManual" type="button">Ingresar a mano</button>
     </div>
-    <h3>Beneficiario</h3>
-    <div class="grid">
-      <label>RUT *<input id="tRut" autocomplete="off" placeholder="Ej. 12.345.678-5"></label>
-      <label class="wide">Nombre *<input id="tNombre" autocomplete="off"></label>
-      <label>Banco<select id="tBanco"></select></label>
-      <label>N° de cuenta<input id="tCuentaB" autocomplete="off"></label>
+    <ol class="tef-cola" id="tCola" hidden></ol>
+    <div class="tef-resumen" id="tResumen" hidden>
+      <div id="tResDatos"></div>
+      <button class="btn small" id="tCorregir" type="button" aria-expanded="false">Corregir datos</button>
     </div>
-    <p class="hint" id="tBenefInfo"></p>
-    <h3>Monto y concepto</h3>
-    <div class="grid">
-      <label>Monto *<input id="tMonto" inputmode="numeric" placeholder="Ej. 250.000" autocomplete="off"></label>
-      <label>Concepto *<input id="tConcepto" placeholder="Ej. CONSUMO AGUA ESTABLECIMIENTO" autocomplete="off"></label>
-      <label class="wide">Mensaje al beneficiario<input id="tMensaje" placeholder="Ej. MEMO 12" autocomplete="off"></label>
+    <ul class="issues" id="tAvisos" hidden></ul>
+    <div id="tCampos" hidden>
+      <h3>Comprobante</h3>
+      <div class="grid">
+        <label>N° de transferencia *<input id="tNum" inputmode="numeric" placeholder="Ej. 1234567" autocomplete="off"></label>
+        <label>ID TEF<input id="tIdTef" inputmode="numeric" autocomplete="off"></label>
+        <label>Fecha de la transacción *<input type="date" id="tFecha"></label>
+        <label>Hora<input type="time" id="tHora"></label>
+        <label>Cuenta de origen *<select id="tCuenta"></select></label>
+        <label id="tCuentaOtraL" hidden>N° de la otra cuenta *<input id="tCuentaOtra" inputmode="numeric" autocomplete="off"></label>
+        <label>Fuente *<select id="tFuente"></select></label>
+      </div>
+      <h3>Beneficiario</h3>
+      <div class="grid">
+        <label>RUT *<input id="tRut" autocomplete="off" placeholder="Ej. 12.345.678-5"></label>
+        <label class="wide">Nombre *<input id="tNombre" autocomplete="off"></label>
+        <label>Banco<select id="tBanco"></select></label>
+        <label>N° de cuenta<input id="tCuentaB" autocomplete="off"></label>
+      </div>
+      <p class="hint" id="tBenefInfo"></p>
+      <h3>Monto y concepto</h3>
+      <div class="grid">
+        <label>Monto *<input id="tMonto" inputmode="numeric" placeholder="Ej. 250.000" autocomplete="off"></label>
+        <label>Concepto *<input id="tConcepto" placeholder="Ej. CONSUMO AGUA ESTABLECIMIENTO" autocomplete="off"></label>
+        <label class="wide">Mensaje al beneficiario<input id="tMensaje" placeholder="Ej. MEMO 12" autocomplete="off"></label>
+      </div>
+      <h3>Intervinientes</h3>
+      <div class="grid">
+        <label>Preparó<input id="tPreparo" placeholder="Quién preparó la transferencia" autocomplete="off"></label>
+        <label>Autorizó<input id="tAutorizo" placeholder="Quiénes la autorizaron" autocomplete="off"></label>
+        <label class="wide">Observación<input id="tObs" autocomplete="off"></label>
+      </div>
     </div>
-    <h3>Qué paga</h3>
-    <div class="viewtabs" role="radiogroup" aria-label="Qué paga la transferencia" id="tOrigen">
-      <button type="button" data-origen="documentos" aria-pressed="false">Documentos pendientes</button>
-      <button type="button" data-origen="abonos" aria-pressed="false">Abono de Remuneraciones</button>
-      <button type="button" data-origen="suelto" aria-pressed="true">Sin documento en el panel</button>
+    <div id="tPaga" hidden>
+      <h3>Qué paga</h3>
+      <div class="viewtabs" role="radiogroup" aria-label="Qué paga la transferencia" id="tOrigen">
+        <button type="button" data-origen="documentos" aria-pressed="false">Documentos pendientes</button>
+        <button type="button" data-origen="abonos" aria-pressed="false">Abono de Remuneraciones</button>
+        <button type="button" data-origen="suelto" aria-pressed="true">Sin documento en el panel</button>
+      </div>
+      <div id="tItems"></div>
+      <p class="hint" id="tSuma"></p>
     </div>
-    <div id="tItems"></div>
-    <p class="hint" id="tSuma"></p>
-    <h3>Intervinientes</h3>
-    <div class="grid">
-      <label>Preparó<input id="tPreparo" placeholder="Quién preparó la transferencia" autocomplete="off"></label>
-      <label>Autorizó<input id="tAutorizo" placeholder="Quiénes la autorizaron" autocomplete="off"></label>
-      <label class="wide">Observación<input id="tObs" autocomplete="off"></label>
-    </div>
-    <div class="row">
+    <div class="row" id="tAcciones" hidden>
       <button class="btn primary" id="tRegistrar" type="button">Registrar transferencia pagada</button>
+      <button class="btn" id="tOmitir" type="button" hidden>Omitir este comprobante</button>
       <button class="btn" id="tCancelar" type="button">Cancelar</button>
     </div>
   </form>

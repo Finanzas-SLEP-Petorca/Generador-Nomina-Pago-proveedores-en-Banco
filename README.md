@@ -2,7 +2,7 @@
 
 Panel del Servicio Local de Educación Pública de Petorca para armar las nóminas de carga masiva de pago a proveedores de BancoEstado. Genera archivos en formato DET-SUBDET de 9 columnas, con una nómina por fuente de financiamiento. Es un sitio estático publicado en GitHub Pages. Los datos se guardan en Firestore y los comparte el equipo de Finanzas.
 
-> **Este repositorio es público. Nunca subas datos reales.** Eso incluye RUT de proveedores, cuentas, nóminas `.txt`, planillas con datos y respaldos `.json`. El `.gitignore` los excluye, pero revisa `git status` antes de cada commit.
+> **Este repositorio es público. Nunca subas datos reales.** Eso incluye RUT de proveedores, cuentas, nóminas `.txt`, planillas con datos, comprobantes PDF de transferencias y respaldos `.json`. El `.gitignore` los excluye, pero revisa `git status` antes de cada commit.
 
 ## Estructura
 
@@ -16,10 +16,12 @@ js/formato.js               Normalización, validaciones, armado de la nómina y
 js/importar.js              Pegar desde Excel, importar xls/xlsx/csv/txt, planilla del banco
 js/excel.js                 Excel BancoEstado idéntico, plantilla de documentos y Excel del reporte de pagos
 js/pdf.js                   Reporte de pagos en PDF (A4 horizontal)
+js/comprobante.js           Lectura del comprobante PDF de una transferencia (imagen del PDF y campos)
+js/ocr.js                   OCR del comprobante en el navegador (Tesseract.js)
 js/datos.js                 Firestore: suscripciones, transacciones, historial, migración
 js/ui/*.js                  Pasos 1 a 4, Remuneraciones, transferencias electrónicas y Configuración
 assets/                     Plantillas .xlsx vacías y logos (SLEP Petorca, Educación Pública, Mineduc, BancoEstado)
-vendor/                     SheetJS 0.18.5, JSZip 3.10.1, jsPDF 4.2.1 y jsPDF-AutoTable 5.0.8 (versiones fijadas; jsPDF se carga solo al pedir un PDF)
+vendor/                     SheetJS 0.18.5, JSZip 3.10.1, jsPDF 4.2.1, jsPDF-AutoTable 5.0.8 y Tesseract.js 7.0.0 con español (versiones fijadas; jsPDF y Tesseract se cargan solo al usarse)
 firestore/bloque_pago.rules Bloque de reglas del panel (con correos marcadores)
 referencia/                 Panel anterior (especificación viva)
 tests/                      Pruebas (no se publican)
@@ -132,7 +134,13 @@ Las preferencias de interfaz quedan en `localStorage`: último paso abierto, fil
 
 ## Transferencias electrónicas
 
-Los pagos directos por transferencia electrónica (sin nómina) se registran en la Bitácora con **Registrar transferencia**. El comprobante de BancoEstado trae los datos como imagen dentro del PDF, así que se copian a mano: N° de transferencia, ID TEF, fecha y hora, cuenta de origen, beneficiario, monto, concepto, mensaje y quién preparó y autorizó.
+Los pagos directos por transferencia electrónica (sin nómina) se registran en la Bitácora con **Registrar transferencia**: se sube el **Comprobante** o el **Detalle de Transferencia Electrónica** en PDF, tal como lo descarga BancoEstado (se pueden elegir o soltar varios; quedan en cola). También se puede ingresar a mano.
+
+- **Lectura del PDF** (`js/comprobante.js` y `js/ocr.js`). El banco arma el PDF con una captura de su página: los datos vienen como una imagen RGB comprimida con Flate y una máscara de transparencia, sin texto. El panel extrae esa imagen sin librerías (`DecompressionStream`) y la lee con OCR, con **Tesseract.js 7** y el idioma español (`vendor/tesseract/`, unos 10 MB que se cargan solo al leer el primer comprobante; después quedan en la caché del navegador). Todo corre en el navegador: el PDF no sale del computador. Tarda unos segundos por comprobante.
+- **Qué lee:** N° de transferencia, ID TEF, fecha y hora, estado, cuenta de origen y su nombre, beneficiario (nombre, RUT, banco, tipo y N° de cuenta), monto, concepto, mensaje e intervinientes (quién preparó y quiénes autorizaron).
+- **Controles:** dígito verificador de los RUT, CuentaRUT igual al RUT, banco conocido, estado `Autorizada`, N° de transferencia ya registrado o repetido entre los PDF subidos, y datos bancarios distintos a los del maestro de proveedores. Si el OCR dudó de algo, el formulario queda abierto para corregir.
+- **Qué paga:** si el monto calza exactamente con abonos pendientes de Remuneraciones o con documentos pendientes del mismo RUT (una combinación única, las notas de crédito restan), quedan marcados. Si no, queda como pago sin documento y se avisa.
+- **Fuente:** sale de la cuenta de origen asociada en Configuración. Si la cuenta no está asociada, se deduce del nombre de la cuenta (“Subvencion General” → GENERAL) y se avisa.
 
 - Queda en `pago_nominas` con `tipo: "transferencia"`, el mismo correlativo de las nóminas y estado `cargada`, con su único pago ya `pagado`: el banco la autoriza al instante. El N° de transferencia va en `operacion` (columna N° BancoEstado).
 - `origen` dice qué paga: `documentos` (pendientes del paso 2), `abonos` (de Remuneraciones) o `suelto` (nada cargado en el panel). Lo que paga sale de pendientes en la misma transacción, y vuelve si la transferencia se anula o se rechaza.
@@ -210,11 +218,12 @@ cd tests
 npm install
 npm run formato   # .txt byte a byte y validaciones contra el código de la referencia
 npm run conciliar # lectura del reporte de BancoEstado y conciliación con la bitácora
+npm run comprobante # lectura del comprobante PDF de una transferencia (imagen del PDF y campos)
 npm run reglas    # bloque de reglas en el emulador de Firestore
 npm run e2e       # Chromium contra los emuladores de Auth y Firestore (primera vez: npx playwright install chromium)
 ```
 
-El workflow **Pruebas** corre `formato` y `reglas` en cada push y pull request. Las pruebas usan los correos marcadores del bloque (`admin1@example.com`, `usuario1@example.com`) y solo datos ficticios.
+El workflow **Pruebas** corre `formato`, `conciliar`, `comprobante` y `reglas` en cada push y pull request. Las pruebas usan los correos marcadores del bloque (`admin1@example.com`, `usuario1@example.com`) y solo datos ficticios.
 
 ### Probar el panel con emuladores, sin tocar el proyecto real
 

@@ -520,7 +520,7 @@ export const registrarTransferencia = t => conReintento(al => runTransaction(db,
   tx.set(nRef, nomina);
   items.forEach(it => tx.delete(ref(it.id)));
   const que = t.origen === "documentos" ? `, ${docs.length} documento${docs.length > 1 ? "s" : ""}` : t.origen === "abonos" ? `, ${docs.length} abono${docs.length > 1 ? "s" : ""}` : ", pago sin documento en el panel";
-  tx.set(refHist(), hist("registrar transferencia", "nomina:" + num, `Transferencia N° ${nomina.operacion} (registro ${num}) del ${fmtISO(t.fecha)}${t.hora ? " " + t.hora : ""}, ${t.fuente}: ${fmtRut(b.rut)} ${nomina.pagos[0].nombre}, ${money(t.monto)}${que}. ${nomina.concepto}`, null, { operacion: nomina.operacion, idTef: nomina.idTef, total: t.monto, origen: t.origen, tipo: "transferencia" }));
+  tx.set(refHist(), hist("registrar transferencia", "nomina:" + num, `Transferencia N° ${nomina.operacion} (registro ${num}) del ${fmtISO(t.fecha)}${t.hora ? " " + t.hora : ""}, ${t.fuente}: ${fmtRut(b.rut)} ${nomina.pagos[0].nombre}, ${money(t.monto)}${que}. ${nomina.concepto}${t.pdf ? `. Leída del PDF ${S(t.pdf)}` : ""}`, null, { operacion: nomina.operacion, idTef: nomina.idTef, total: t.monto, origen: t.origen, tipo: "transferencia" }));
   return nomina;
 }));
 

@@ -340,6 +340,23 @@ td input.inl{padding:4px 8px;font-size:13px;width:190px;background:var(--surface
 .tef-items{display:flex;flex-direction:column;gap:6px;margin-top:10px}
 .tef-items label{display:flex;align-items:center;gap:10px;flex-direction:row;font-weight:400;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);cursor:pointer}
 .tef-items label input{width:auto;margin:0}
+/* Comprobante PDF: zona para subir o soltar, cola de archivos y resumen leído */
+.tef-pdf{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:14px 16px;border:2px dashed var(--line-2);border-radius:var(--radius);background:var(--surface-2)}
+.tef-pdf .hint{flex:1 1 320px;margin:0}
+.tefdlg.arrastre .tef-pdf{border-color:var(--accent);background:var(--accent-soft)}
+.tef-cola{list-style:none;margin:12px 0 0;padding:0;display:flex;flex-direction:column;gap:4px;font-size:13.5px}
+.tef-cola li{display:flex;gap:10px;align-items:center;padding:6px 12px;border:1px solid var(--line);border-radius:10px}
+.tef-cola li .est{margin-left:auto;white-space:nowrap;color:var(--muted)}
+.tef-cola li.actual{border-color:var(--accent);background:var(--accent-soft)}
+.tef-cola li.registrada .est{color:var(--ok)}
+.tef-cola li.error .est,.tef-cola li.repetida .est{color:var(--warn)}
+.tef-cola li button{all:unset;cursor:pointer;text-decoration:underline;color:var(--accent)}
+.tef-resumen{margin-top:14px;padding:14px 16px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface)}
+.tef-resumen dl{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;margin:0 0 10px}
+.tef-resumen dt{color:var(--muted);font-size:13px}
+.tef-resumen dd{margin:0}
+.tef-resumen .monto{font-size:20px;font-weight:700;color:var(--ink-strong)}
+@media (max-width:560px){.tef-resumen dl{grid-template-columns:1fr}.tef-resumen dt{margin-top:6px}}
 .gen-cuerpo{padding:14px 22px 22px}
 .gen-cuerpo p{margin:0 0 12px}
 .gen-archivos{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:0 0 14px}

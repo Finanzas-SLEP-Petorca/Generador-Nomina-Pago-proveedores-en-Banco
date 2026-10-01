@@ -62,6 +62,46 @@ async function descargas(p, n, accion) {
 async function descarga(p, accion) { const [d] = await Promise.all([p.waitForEvent("download"), accion()]); return { nombre: d.suggestedFilename(), bytes: readFileSync(await d.path()) } }
 const esperar = (p, fn, arg) => p.waitForFunction(fn, arg, { timeout: 10000 });
 
+// Comprobante de transferencia ficticio con el diseño de BancoEstado, en un PDF
+// con la misma estructura que el del banco (imagen RGB con Flate y SMask).
+async function pdfTransferencia(d) {
+  const ctx = await browser.newContext({ viewport: { width: 1600, height: 900 }, deviceScaleFactor: 1.25 });
+  const p = await ctx.newPage();
+  const fecha = "29/09/2026", v = (l, x, st = "") => `<div><div class="l">${l}</div><div class="v"${st}>${x}</div></div>`;
+  await p.setContent(`<style>html,body{background:transparent}body{margin:0;padding:24px 30px;font:22px Arial,sans-serif;color:#333;width:1540px}h1{font-weight:400;font-size:32px;margin:0 0 40px}
+    section{border-bottom:1px solid #ccc;padding:18px 0}.g3{display:grid;grid-template-columns:1fr 1fr 1fr}.g2{display:grid;grid-template-columns:1fr 2fr}.l{color:#555}.v{font-weight:700;margin-top:6px}
+    table{width:100%;border-collapse:collapse;margin-top:16px}td,th{padding:14px;text-align:left;border-bottom:1px solid #ddd}</style>
+    <h1>Detalle Transferencia Electrónica | N° ${d.num}</h1>
+    <section class="g3">${v("Fecha Transacción", fecha + " - " + d.hora)}${v("ID TEF", d.idTef)}${v("Estado", "Autorizada", ' style="color:#3a3"')}</section>
+    <section>${v("Cuenta Origen", d.cuenta + " | " + d.cuentaNombre)}</section>
+    <section><div class="l">Beneficiario</div><div class="v">${d.alias}</div><div class="v">${d.nombre} | ${d.rut} | BANCO DEL ESTADO DE CHILE | Cuenta Corriente ${d.cuentaB}</div><div>contacto@ejemplo.cl;</div></section>
+    <section class="g2">${v("Monto", "$" + d.monto.toLocaleString("es-CL"))}${v("Concepto", d.concepto)}</section>
+    <section>${v("Mensaje a Beneficiario", d.mensaje)}</section>
+    <h2 style="font-weight:400;font-size:26px;margin-top:40px">Intervinientes</h2>
+    <table><tr><th>Rut</th><th>Nombre</th><th>Fecha</th><th>Acción</th></tr>
+    <tr><td>11.111.111-1</td><td>Usuario Uno</td><td>${fecha} - 11:00</td><td>Preparación</td></tr>
+    <tr><td>22.222.222-2</td><td>Administrador Uno</td><td>${fecha} - 11:05</td><td>Autorizacion 1</td></tr>
+    <tr><td>33.333.333-3</td><td>Usuario Dos</td><td>${fecha} - 11:10</td><td>Autorizacion 2</td></tr></table>`);
+  const png = await p.screenshot({ fullPage: true, omitBackground: true });
+  const { w, h, b64 } = await p.evaluate(async src => {
+    const img = new Image(); img.src = "data:image/png;base64," + src; await img.decode();
+    const c = document.createElement("canvas"); c.width = img.width; c.height = img.height;
+    const g = c.getContext("2d"); g.drawImage(img, 0, 0);
+    const px = g.getImageData(0, 0, c.width, c.height).data; let s = "";
+    for (let i = 0; i < px.length; i += 0x8000) s += String.fromCharCode.apply(null, px.subarray(i, i + 0x8000));
+    return { w: c.width, h: c.height, b64: btoa(s) };
+  }, png.toString("base64"));
+  await ctx.close();
+  const rgba = Buffer.from(b64, "base64"), rgb = Buffer.alloc(w * h * 3), alfa = Buffer.alloc(w * h);
+  for (let i = 0; i < w * h; i++) { rgba.copy(rgb, i * 3, i * 4, i * 4 + 3); alfa[i] = rgba[i * 4 + 3] }
+  const { deflateSync } = await import("node:zlib");
+  const img = deflateSync(rgb), masc = deflateSync(alfa), L = s => Buffer.from(s, "latin1");
+  return Buffer.concat([L("%PDF-1.3\n"),
+    L(`5 0 obj\n<</Type /XObject /Subtype /Image /BitsPerComponent 8 /Width ${w} /Height ${h} /Filter /FlateDecode /ColorSpace /DeviceRGB /SMask 6 0 R /Length ${img.length}>>\nstream\n`), img, L("\nendstream\nendobj\n"),
+    L(`6 0 obj\n<</Type /XObject /Subtype /Image /Height ${h} /Width ${w} /BitsPerComponent 8 /Filter /FlateDecode /ColorSpace /DeviceGray /Decode [0 1] /Length ${masc.length}>>\nstream\n`), masc, L("\nendstream\nendobj\n"),
+    L("trailer\n<< /Size 7 >>\n%%EOF\n")]);
+}
+
 // ---------- datos ficticios: planilla de pago anterior del banco ----------
 const dv = b => { let s = 0, m = 2; for (let i = b.length - 1; i >= 0; i--) { s += (+b[i]) * m; m = m === 7 ? 2 : m + 1 } const r = 11 - s % 11; return r === 11 ? "0" : r === 10 ? "K" : String(r) };
 const R = ["11111111", "22222222", "76543210", "12345678", "9876543"].map(b => b + dv(b));
@@ -489,6 +529,7 @@ try {
     // 1) Paga documentos pendientes del paso 2.
     await A.click("#btnTef");
     await esperar(A, () => document.getElementById("dlgTef").open);
+    await A.click("#tManual"); // sin PDF: el formulario completo
     await A.fill("#tNum", "900001"); await A.fill("#tIdTef", "5550001111"); await A.fill("#tHora", "16:48");
     await A.selectOption("#tCuenta", "11100000001");
     assert.equal(await A.inputValue("#tFuente"), "SEP"); // la fuente sale de la cuenta
@@ -512,7 +553,7 @@ try {
     await A.fill("#hSearch", "");
     log("transferencia N° 900001: paga", docsRut.length, "documentos pendientes por $" + sumaDocs.toLocaleString("es-CL"), "(registro N°", numTef + "); fuente desde la cuenta de origen");
     // 2) Un N° de transferencia no se registra dos veces.
-    await A.click("#btnTef");
+    await A.click("#btnTef"); await A.click("#tManual");
     await A.fill("#tNum", "900001"); await A.selectOption("#tCuenta", "11100000001");
     await A.fill("#tRut", P[2]); await A.dispatchEvent("#tRut", "change"); await A.fill("#tNombre", "OTRO"); await A.fill("#tMonto", "5"); await A.fill("#tConcepto", "X");
     await A.click("#tRegistrar");
@@ -531,7 +572,7 @@ try {
     await esperar(A, () => document.querySelector("#hDetail .tag")?.textContent === "Anulada");
     // 4) Paga un abono pendiente de Remuneraciones (el no cobrado que volvió a la pestaña).
     const cntAbAntes = await A.textContent("#cntAbonos");
-    await A.click("#btnTef");
+    await A.click("#btnTef"); await A.click("#tManual");
     await A.fill("#tNum", "900003"); await A.selectOption("#tCuenta", "11100000001");
     await A.fill("#tRut", P[0]); await A.dispatchEvent("#tRut", "change");
     assert.equal(await A.inputValue("#tNombre"), "VICTOR NUNEZ PEREZ");
@@ -559,6 +600,60 @@ try {
     }
     await A.selectOption("#rTipo", "*");
     log("transferencias: pago sin documento anulado, abono de Remuneraciones pagado, filtro por tipo y reporte solo de transferencias");
+
+    // 5) Desde el PDF de BancoEstado: el panel lee el comprobante con OCR.
+    // El PDF se arma aquí con datos ficticios y la estructura del banco: una
+    // captura de la página (RGB con Flate) y su máscara de transparencia.
+    const docsPdf = (await A.evaluate(async () => {
+      const fs = await import("https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js");
+      const q = await fs.getDocs(fs.collection(fs.getFirestore(), "pago_documentos"));
+      return q.docs.map(d => d.data()).map(d => ({ rut: d.rut, monto: d.monto, tipo: d.tipo }));
+    }));
+    const rutPdf = docsPdf.length ? docsPdf[0].rut : null, fmtR = r => r.slice(0, -1).replace(/\B(?=(\d{3})+(?!\d))/g, ".") + "-" + r.slice(-1);
+    const sumaPdf = docsPdf.filter(d => d.rut === rutPdf).reduce((a, d) => a + (["60", "61"].includes(d.tipo) ? -d.monto : d.monto), 0);
+    const tef1 = await pdfTransferencia({ num: "9100011", idTef: "5550002222", hora: "11:20", cuenta: "11100000001", cuentaNombre: "Subvencion SEP", alias: "SANITARIA DE PRUEBA", nombre: "EMPRESA SANITARIA DE PRUEBA", rut: fmtR(rutSuelto), cuentaB: "000000098765432100", monto: 432100, concepto: "AGUA ESCUELA", mensaje: "MEMO 77" });
+    const tef2 = rutPdf && await pdfTransferencia({ num: "9100012", idTef: "5550003333", hora: "11:25", cuenta: "11100000009", cuentaNombre: "Subvencion General", alias: "PROVEEDOR", nombre: "PROVEEDOR DE PRUEBA", rut: fmtR(rutPdf), cuentaB: "000000000012345678", monto: sumaPdf, concepto: "PAGO FACTURAS", mensaje: "MEMO 78" });
+    await A.click("#btnTef");
+    await A.setInputFiles("#tPdf", [
+      { name: "DetalleTransferenciaElectronica_prueba_1.pdf", mimeType: "application/pdf", buffer: tef1 },
+      ...(tef2 ? [{ name: "DetalleTransferenciaElectronica_prueba_2.pdf", mimeType: "application/pdf", buffer: tef2 }] : []),
+      { name: "ComprobanteTransferenciaElectronica_prueba_1.pdf", mimeType: "application/pdf", buffer: tef1 } // la misma transferencia otra vez
+    ]);
+    await A.waitForFunction(() => !document.getElementById("tResumen").hidden && document.getElementById("tNum").value === "9100011", null, { timeout: 120000 });
+    assert.equal(await A.inputValue("#tRut"), fmtR(rutSuelto));
+    assert.equal(await A.inputValue("#tMonto"), "432.100");
+    assert.equal(await A.inputValue("#tIdTef"), "5550002222");
+    assert.equal(await A.inputValue("#tHora"), "11:20");
+    assert.equal(await A.inputValue("#tCuenta"), "11100000001");
+    assert.equal(await A.inputValue("#tFuente"), "SEP"); // cuenta asociada en Configuración
+    assert.equal(await A.inputValue("#tBanco"), "012");
+    assert.equal(await A.inputValue("#tCuentaB"), "98765432100");
+    assert.equal(await A.inputValue("#tConcepto"), "AGUA ESCUELA");
+    assert.equal(await A.inputValue("#tPreparo"), "Usuario Uno");
+    assert.equal(await A.inputValue("#tAutorizo"), "Administrador Uno, Usuario Dos");
+    assert.equal(await A.getAttribute('#tOrigen [data-origen="suelto"]', "aria-pressed"), "true");
+    assert.equal(await A.isVisible("#tCampos"), false); // sin dudas del OCR: solo el resumen
+    assert.match(await A.textContent("#tResDatos"), /\$432\.100/);
+    await A.screenshot({ path: AQUI + "transferencia-pdf.png" });
+    await A.click("#tRegistrar");
+    if (tef2) {
+      await A.waitForFunction(() => document.getElementById("tNum").value === "9100012", null, { timeout: 60000 });
+      assert.equal(await A.inputValue("#tCuenta"), "__otra");
+      assert.equal(await A.inputValue("#tCuentaOtra"), "11100000009");
+      assert.equal(await A.inputValue("#tFuente"), "GENERAL"); // del nombre de la cuenta
+      assert.match(await A.textContent("#tAvisos"), /no está asociada a una fuente/);
+      assert.equal(await A.getAttribute('#tOrigen [data-origen="documentos"]', "aria-pressed"), "true");
+      await esperar(A, () => /calza con el monto/.test(document.getElementById("tSuma").textContent));
+      await A.click("#tRegistrar");
+    }
+    // El tercer PDF es la misma transferencia: no se registra dos veces.
+    await esperar(A, () => document.querySelector("#tCola li.repetida") && document.getElementById("tAcciones").hidden);
+    assert.match(await A.textContent("#tCola"), /registrada \(registro N° \d+\)/);
+    await A.screenshot({ path: AQUI + "transferencia-pdf-cola.png" });
+    await A.click("#tefCerrar");
+    await esperar(A, () => [...document.querySelectorAll("#tbBit tr[data-id] td:nth-child(2)")].some(td => td.textContent === "9100011"));
+    if (tef2) await esperar(A, () => [...document.querySelectorAll("#tbBit tr[data-id] td:nth-child(2)")].some(td => td.textContent === "9100012"));
+    log("transferencias desde PDF:", tef2 ? "2 registradas (una sin documento, otra paga " + docsPdf.filter(d => d.rut === rutPdf).length + " documentos que calzan con el monto)" : "1 registrada", "y el PDF repetido se informa");
   }
 
   // ---------- feriados ----------

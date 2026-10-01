@@ -27,4 +27,5 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run formato
       - run: npm run conciliar
+      - run: npm run comprobante
       - run: npm run reglas
