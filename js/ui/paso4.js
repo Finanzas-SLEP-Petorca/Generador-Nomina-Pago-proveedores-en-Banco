@@ -5,11 +5,13 @@ import { S, normRut, fmtRut, money, fmtFecha, fmtISO, isoLocal, todayISO, result
 import { bankWorkbook, abonosWorkbook, libroReporte } from "../excel.js";
 import { pdfReporte, cargarPdf } from "../pdf.js";
 import { M_FORMA_ABONO } from "../catalogos.js";
-import { st, aFecha, suscribirHistorial, cargarNomina, guardarCarga, deshacerCarga, resultadoPago, pagarPendientes, cobroPago, volverPendientes, anularNomina, editarTransferencia, exportarRespaldo } from "../datos.js";
+import { st, aFecha, suscribirHistorial, cargarNomina, guardarCarga, deshacerCarga, resultadoPago, pagarPendientes, cobroPago, volverPendientes, anularNomina, editarTransferencia, aplicarResultadosBanco, exportarRespaldo } from "../datos.js";
+import { leerArchivoBanco, repartir } from "../conciliar.js";
 import { $, esc, toast, accion, descargar, prefs, guardarPrefs, mensajeError } from "./comun.js";
 import { fechaHora } from "./paso1.js";
 
 let openNom = null, bitView = "", detallePendiente = false;
+let conc = null;   // lectura del reporte del banco pendiente de aplicar
 let histNom = { id: null, lista: [], baja: null };
 
 const esAbonos = n => n.tipo === "abonos";
@@ -47,6 +49,7 @@ export function init() {
     nominas.slice().sort((a, b) => a.num - b.num).forEach(n => { const s = status(n); n.pagos.forEach(p => p.docs.forEach(d => rows.push([n.num, n.fuente, creada(n), n.creadaPor, s.t, fmtISO(n.fechaCarga), n.cargadaPor, fmtISO(n.fechaPago), n.operacion, p.rut, p.nombre, p.monto, n.estado === "anulada" ? "Anulada" : EST_PAGO[p.estado], p.motivo, fmtISO(p.reint), d.ndoc, d.tipo, fmtFecha(d.fecha), d.monto, d.dc, TIPOS_REGISTRO[tipoDe(n)].toUpperCase(), d.concepto || n.concepto, d.glosa, esCobroCaja(n, p) && p.estado === "pagado" ? COBRO[p.cobro || ""] : "", fmtISO(p.cobroFecha)]))) });
     descargar("bitacora_nominas_" + today() + ".csv", "﻿" + rows.map(r => r.map(q).join(";")).join("\r\n"));
   };
+  $("fReporteBanco").onchange = e => { const fs = [...e.target.files]; e.target.value = ""; if (fs.length) leerReportes(fs) };
   $("btnIrReporte").onclick = () => $("cardReporte").scrollIntoView({ behavior: "smooth", block: "start" });
   $("bitFiltro").onclick = e => { if (e.target.closest("[data-vertodas]")) { bitView = ""; renderBit() } };
   $("rDesde").onchange = () => { rep.periodo = [$("rDesde").value, rep.periodo[1]]; renderReporte() };
@@ -140,6 +143,7 @@ export function renderBit() {
   }
   $("hTrace").innerHTML = tr.join("");
   $("hTrace").querySelectorAll("[data-go]").forEach(a => a.onclick = () => { openNom = a.dataset.go; renderBit() });
+  renderConciliacion();
   renderNomDetail();
   renderReporte();
 }
@@ -172,6 +176,80 @@ function seguirHistorial(n) {
   histNom.baja = suscribirHistorial("nomina:" + n.num, lista => { histNom.lista = lista; const box = $("nHist"); if (box) box.innerHTML = htmlHistorial(lista) });
 }
 const htmlHistorial = lista => lista.length ? lista.map(h => `<li><b>${esc(h.accion)}</b> <span class="hint">${fechaHora(h.createdAt)} · ${esc(h.autor)}</span><br>${esc(h.detalle)}</li>`).join("") : `<li class="hint">Sin entradas.</li>`;
+
+// ---------------------------------------------------------------------------
+// Reporte de BancoEstado: se lee el Excel del banco, se reparte entre las
+// nóminas por su N° BancoEstado y se muestra lo que cambiaría. Nada se escribe
+// hasta que la persona lo aprueba. Solo se guardan las lecturas: la comparación
+// se rehace en cada render contra st.nominas, así la vista previa no envejece
+// si otro usuario registra algo mientras tanto.
+// ---------------------------------------------------------------------------
+async function leerReportes(files) {
+  const lecturas = [];
+  for (const f of files) {
+    try { lecturas.push({ archivo: f.name, rep: await leerArchivoBanco(f) }) }
+    catch (e) { lecturas.push({ archivo: f.name, rep: { ok: false, error: mensajeError(e) } }) }
+  }
+  conc = lecturas;
+  renderConciliacion();
+  $("cardConciliar").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+const cerrarConciliacion = () => { conc = null; renderConciliacion() };
+
+function renderConciliacion() {
+  const box = $("cardConciliar");
+  if (!conc || !conc.length) { box.hidden = true; box.innerHTML = ""; return }
+  box.hidden = false;
+  const res = repartir(conc, st.nominas);
+  const total = res.reduce((a, r) => a + (r.cambios ? r.cambios.length : 0), 0);
+
+  const bloques = res.map((r, k) => {
+    const cab = `<div class="row" style="margin-top:0;justify-content:space-between"><b>${esc(r.archivo)}</b>${r.rep && r.rep.operacion ? `<span class="hint">BancoEstado N° ${esc(r.rep.operacion)}${r.rep.estadoNomina ? " · " + esc(r.rep.estadoNomina) : ""}</span>` : ""}</div>`;
+    if (r.error) return `<div class="conc">${cab}<p class="hint" style="margin:6px 0 0"><span class="tag err">No se pudo usar</span> ${esc(r.error)}</p></div>`;
+    const n = r.nomina, s = status(n);
+    const filas = (r.cambios || []).map(c => `<tr><td class="mono">${esc(fmtRut(c.rut))}</td><td>${esc(c.nombre)}</td><td class="num">${money(c.monto)}</td><td><span class="tag ${c.estado === "pagado" ? "okk" : "err"}">${esc(EST_PAGO[c.estado] || c.estado)}</span>${c.cobro !== undefined ? ` <span class="hint">por cobrar en banco</span>` : ""}</td><td>${esc(c.motivo)}</td></tr>`).join("");
+    const tabla = filas ? `<div class="tablebox"><table><thead><tr><th>RUT</th><th>Beneficiario</th><th style="text-align:right">Monto</th><th>Queda como</th><th>Motivo del banco</th></tr></thead><tbody>${filas}</tbody></table></div>` : "";
+    const ya = (r.iguales || []).length ? `<p class="hint" style="margin:8px 0 0">${r.iguales.length} pago${r.iguales.length > 1 ? "s" : ""} ya ${r.iguales.length > 1 ? "estaban" : "estaba"} registrado${r.iguales.length > 1 ? "s" : ""} así; no se ${r.iguales.length > 1 ? "tocan" : "toca"}.</p>` : "";
+    const avisos = (r.avisos || []).length ? `<ul class="hint" style="margin:8px 0 0;padding-left:18px">${r.avisos.map(a => `<li>${esc(a)}</li>`).join("")}</ul>` : "";
+    const nada = !filas && !ya ? `<p class="hint" style="margin:6px 0 0">Nada que registrar desde este archivo.</p>` : "";
+    return `<div class="conc">${cab}<p class="hint" style="margin:4px 0 0">Nómina <a data-conc-go="${esc(n.id)}">N° ${n.num}</a> · ${esc(n.fuente)} · ${esAbonos(n) ? "Remuneraciones" : "Proveedores"} · <span class="tag ${s.c}">${esc(s.t)}</span></p>${tabla}${ya}${avisos}${nada}</div>`;
+  }).join("");
+
+  box.innerHTML = `<div class="row" style="margin-top:0;justify-content:space-between"><h2 style="margin:0">Reporte de BancoEstado</h2><button class="btn small" id="concCerrar">Cerrar ✕</button></div>
+    <p class="sub" style="margin-top:4px">Esto es lo que se registraría. Revísalo y aplícalo; hasta entonces no se escribe nada. Un pago cuyo monto no calce con el del banco, o con un estado que el panel no reconozca, se deja para registrar a mano.</p>
+    ${bloques}
+    <div class="row">${total ? `<button class="btn primary" id="concAplicar">Registrar ${total} resultado${total > 1 ? "s" : ""}</button>` : `<span class="hint">No hay resultados nuevos que registrar.</span>`}<button class="btn" id="concCancelar">Cancelar</button></div>`;
+
+  $("concCerrar").onclick = cerrarConciliacion;
+  $("concCancelar").onclick = cerrarConciliacion;
+  box.querySelectorAll("[data-conc-go]").forEach(a => a.onclick = () => { openNom = a.dataset.concGo; renderBit(); $("hDetail").scrollIntoView({ behavior: "smooth", block: "start" }) });
+  const btn = $("concAplicar");
+  if (btn) btn.onclick = () => accion(btn, async () => {
+    // Una transacción por nómina: si dos archivos son de la misma, se agrupan.
+    const porNomina = new Map();
+    res.forEach(r => {
+      if (r.error || !r.cambios || !r.cambios.length) return;
+      const e = porNomina.get(r.nomina.id) || { n: r.nomina, archivos: [], resultados: new Map() };
+      e.archivos.push(r.archivo);
+      r.cambios.forEach(c => e.resultados.set(c.rut + "|" + c.monto, { rut: c.rut, monto: c.monto, estado: c.estado, motivo: c.motivo }));
+      porNomina.set(r.nomina.id, e);
+    });
+    let aplicados = 0; const problemas = [];
+    for (const e of porNomina.values()) {
+      try {
+        const out = await aplicarResultadosBanco(e.n.id, [...e.resultados.values()], e.archivos.join(", "));
+        aplicados += (out && out.aplicados) || 0;
+        (out && out.omitidos || []).forEach(o => problemas.push(`N° ${e.n.num}: ${o}`));
+      } catch (err) { problemas.push(`N° ${e.n.num}: ${mensajeError(err)}`); }
+    }
+    conc = null; renderBit();
+    toast(aplicados
+      ? `${aplicados} resultado${aplicados > 1 ? "s" : ""} registrado${aplicados > 1 ? "s" : ""} desde el reporte del banco` + (problemas.length ? `. ${problemas.length} quedaron sin aplicar` : "")
+      : problemas.length ? "No se registró nada: " + problemas[0] : "No había nada que registrar");
+    if (problemas.length) console.warn("Sin aplicar:", problemas);
+  });
+}
 
 function renderNomDetail() {
   const box = $("hDetail"); const n = st.nominas.find(x => x.id === openNom);
@@ -260,8 +338,11 @@ function renderNomDetail() {
     if (!esHabil(d.fechaPago, st.config.feriados) && !confirm(`La fecha de pago ${fmtISO(d.fechaPago)} cae en sábado, domingo o feriado. ¿Guardarla igual?`)) return false;
     return true;
   };
-  if (q("nCargar")) q("nCargar").onclick = () => { const d = datosCarga(); if (!fechasOk(d)) return; if (!d.operacion) { toast("Indica el N° de nómina que asignó BancoEstado"); q("nOper").focus(); return } accion(q("nCargar"), async () => { await cargarNomina(n.id, d); toast(`Nómina N° ${n.num} marcada como cargada el ${fmtISO(d.fechaCarga)}, con pago el ${fmtISO(d.fechaPago)}. Resultado desde el ${fmtDue(resultadoDesde(d, st.config.feriados))}`) }) };
-  if (q("nGuardar")) q("nGuardar").onclick = () => { const d = datosCarga(); if (!fechasOk(d)) return; accion(q("nGuardar"), async () => { await guardarCarga(n.id, d); toast("Cambios guardados") }) };
+  // El N° BancoEstado identifica la nómina al leer el reporte del banco: no puede repetirse.
+  const operRepetida = d => st.nominas.find(x => x.id !== n.id && x.estado !== "anulada" && tipoDe(x) !== "transferencia" && d.operacion && S(x.operacion) === d.operacion);
+  const avisoRepetida = x => { toast(`El N° BancoEstado ${S(x.operacion)} ya es de la nómina N° ${x.num}`); q("nOper").focus() };
+  if (q("nCargar")) q("nCargar").onclick = () => { const d = datosCarga(); if (!fechasOk(d)) return; if (!d.operacion) { toast("Indica el N° de nómina que asignó BancoEstado"); q("nOper").focus(); return } const rep2 = operRepetida(d); if (rep2) { avisoRepetida(rep2); return } accion(q("nCargar"), async () => { await cargarNomina(n.id, d); toast(`Nómina N° ${n.num} marcada como cargada el ${fmtISO(d.fechaCarga)}, con pago el ${fmtISO(d.fechaPago)}. Resultado desde el ${fmtDue(resultadoDesde(d, st.config.feriados))}`) }) };
+  if (q("nGuardar")) q("nGuardar").onclick = () => { const d = datosCarga(); if (!fechasOk(d)) return; const rep2 = operRepetida(d); if (rep2) { avisoRepetida(rep2); return } accion(q("nGuardar"), async () => { await guardarCarga(n.id, d); toast("Cambios guardados") }) };
   if (q("nPagarRest")) q("nPagarRest").onclick = () => { if (Date.now() < due.getTime() && !confirm("Aún no es la hora del resultado del banco (14:00 del día de pago). ¿Marcar igual los pendientes como pagados?")) return; accion(q("nPagarRest"), async () => { await pagarPendientes(n.id); const sinR = n.pagos.some(p => p.estado === "rechazado" && !p.reint), caja = n.pagos.some(p => p.estado !== "rechazado" && esCobroCaja(n, p) && !p.cobro); toast(`Pagos pendientes marcados como pagados. La nómina N° ${n.num} queda en «${sinR ? "Con rechazos por reintegrar" : caja ? "Por cobrar en banco" : "Pagadas"}».`) }) };
   if (q("nTxt")) q("nTxt").onclick = () => descargar(nombreNomina(n) + ".txt", toTxt(n.lineas));
   if (q("nXlsx")) q("nXlsx").onclick = () => accion(q("nXlsx"), async () => { try { descargar(nombreNomina(n) + ".xlsx", await (esAbonos(n) ? abonosWorkbook : bankWorkbook)(n.lineas)) } catch (e) { toast("No se pudo armar el Excel: " + mensajeError(e)) } });

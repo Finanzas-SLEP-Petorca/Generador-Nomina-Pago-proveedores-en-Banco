@@ -239,12 +239,12 @@ ok("abonos: nómina, .txt de 7 columnas y avisos", () => {
 
 ok("abonos: importar la hoja DETALLE del banco y filas pegadas", () => {
   const detalle = [["", "", "Pago", "", "", "", "Versión 1.1"], ["", "", "(7 Columnas)"], ["RUT", "NOMBRES Y APELLIDOS O RAZÓN SOCIAL", "EMAIL", "BANCO", "FORMA DE PAGO", "Nº DE CUENTA", "MONTO DEL PAGO"],
-    [111111111, "José Ñuñez", "FINANZAS@SLEPPETORCA.GOB.CL", "012", "29", "", 151515], ["12345678-5", "ANA", "", 1, 1, 12345678901, "$1.500"], ["", "", "", "", "", "", ""]];
+    [111111111, "José Ñuñez", "FINANZAS@SLEPPETORCA.GOB.CL", "012", "29", "", 151515], ["12345678-5", "ANA", "", 1, 1, 11100066195, "$1.500"], ["", "", "", "", "", "", ""]];
   const f = I.ingestAbonos(detalle);
   assert.equal(f.length, 2);
   const p = I.prepararAbonos(f, { fuentes: ["GENERAL"], defFuente: "GENERAL", concepto: "FONDOS FIJOS" });
   assert.equal(p.abonos.length, 2); assert.equal(p.abonos[0].nombre, "JOSE NUNEZ"); assert.equal(p.abonos[1].banco, "001"); assert.equal(p.abonos[1].forma, "01");
-  assert.equal(p.abonos[1].cuenta, "12345678901"); assert.equal(p.abonos[1].monto, 1500); assert.equal(p.corregidos, 1);
+  assert.equal(p.abonos[1].cuenta, "11100066195"); assert.equal(p.abonos[1].monto, 1500); assert.equal(p.corregidos, 1);
   const pegado = I.ingestAbonos(I.parsePaste("111111111\tUNO\t\t012\t30\t11111111\t5000\tSEP\tFondo fijo escuela"));
   const q = I.prepararAbonos(pegado, { fuentes: ["GENERAL"], defFuente: "GENERAL", concepto: "" });
   assert.equal(q.abonos[0].fuente, "SEP"); assert.equal(q.abonos[0].glosa, "Fondo fijo escuela"); assert.deepEqual(q.nuevasFuentes, ["SEP"]); assert.equal(q.abonos[0].concepto, "REMUNERACIONES");
