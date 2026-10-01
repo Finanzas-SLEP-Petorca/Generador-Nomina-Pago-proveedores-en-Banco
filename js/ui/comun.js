@@ -10,7 +10,13 @@ export function fillSelect(el, arr, withCode = true) { el.innerHTML = arr.map(([
 export const fOpts = sel => st.config.fuentes.map(f => `<option value="${esc(f)}"${f === sel ? " selected" : ""}>${esc(f)}</option>`).join("");
 
 let tt;
-export function toast(m) { const t = $("toast"); t.textContent = m; t.classList.add("show"); clearTimeout(tt); tt = setTimeout(() => t.classList.remove("show"), 4200) }
+export function toast(m) {
+  const t = $("toast");
+  // Con un diálogo abierto, el aviso va dentro de él: si no, queda detrás del diálogo y no se ve.
+  const destino = [...document.querySelectorAll("dialog[open]")].pop() || document.body;
+  if (t.parentElement !== destino) destino.appendChild(t);
+  t.textContent = m; t.classList.add("show"); clearTimeout(tt); tt = setTimeout(() => t.classList.remove("show"), 4200);
+}
 
 // Mensaje legible para un error de Firestore o de validación.
 export function mensajeError(e) {

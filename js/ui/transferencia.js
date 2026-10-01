@@ -59,12 +59,13 @@ function abrir() {
 
 // Sin comprobante en revisión: solo la zona para subir PDF y la cola.
 function ocultarRevision() {
-  $("tResumen").hidden = $("tAvisos").hidden = $("tCampos").hidden = $("tPaga").hidden = $("tAcciones").hidden = true;
+  $("tResumen").hidden = $("tAvisos").hidden = $("tCampos").hidden = $("tPaga").hidden = $("tAcciones").hidden = $("tError").hidden = true;
   pintarCola();
 }
 
 // Formulario en blanco con las opciones de cuenta y fuente al día.
 function prepararForm() {
+  $("tError").hidden = true;
   $("tefForm").reset(); origen = "suelto"; autocompletado = {}; marcar = new Set();
   $("tFecha").value = todayISO();
   const cuentas = st.config.cuentas;
@@ -304,12 +305,21 @@ function registrar() {
   }
   t.ids = sel.ids;
   const it = actual;
+  $("tError").hidden = true;
   accion($("tRegistrar"), async () => {
     try {
       const n = await registrarTransferencia(t);
       toast(`Transferencia N° ${n.operacion} registrada como pagada (registro N° ${n.num}, ${n.fuente}, ${money(n.total)})`);
       if (it) { it.estado = "registrada"; it.num = n.num; siguiente(n) }
       else { $("dlgTef").close(); abrirNomina(String(n.num)) }
-    } catch (e) { toast("No se registró: " + mensajeError(e)) }
+    } catch (e) {
+      console.error(e);
+      // El error queda escrito en el diálogo (el aviso flotante dura unos segundos).
+      const reglas = e && e.code === "permission-denied" ? " Si es la primera transferencia que se registra, lo más probable es que en Firebase siga publicado el bloque de reglas anterior: publica el de firestore/bloque_pago.rules, que permite registrar transferencias y guardar las cuentas de origen (ver README, paso 2)." : "";
+      $("tError").innerHTML = `<li class="error"><b>No se registró la transferencia.</b> ${esc(mensajeError(e) + reglas)}</li>`;
+      $("tError").hidden = false;
+      $("tError").scrollIntoView({ block: "nearest" });
+      toast("No se registró: " + mensajeError(e));
+    }
   });
 }

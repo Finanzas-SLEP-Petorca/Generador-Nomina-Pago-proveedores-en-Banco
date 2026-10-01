@@ -558,6 +558,7 @@ try {
     await A.fill("#tRut", P[2]); await A.dispatchEvent("#tRut", "change"); await A.fill("#tNombre", "OTRO"); await A.fill("#tMonto", "5"); await A.fill("#tConcepto", "X");
     await A.click("#tRegistrar");
     await esperar(A, () => document.getElementById("toast").textContent.includes("ya está registrada"));
+    assert.equal(await A.evaluate(() => document.getElementById("toast").parentElement.id), "dlgTef"); // el aviso se ve sobre el diálogo
     // 3) Pago sin documento en el panel, desde otra cuenta; después se anula (registrado por error).
     await A.fill("#tNum", "900002"); await A.selectOption("#tCuenta", "__otra"); await A.fill("#tCuentaOtra", "11100000002"); await A.selectOption("#tFuente", "GENERAL");
     const rutSuelto = "77777777" + dv("77777777");
