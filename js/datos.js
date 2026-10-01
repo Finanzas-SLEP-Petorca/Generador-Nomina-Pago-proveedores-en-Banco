@@ -90,7 +90,7 @@ export function desuscribir() {
   st.maestro = {}; st.docs = []; st.nominas = []; st.abonos = []; st.abonosError = null; st.error = null;
 }
 
-// Historial de una referencia ("nomina:12", "proveedor:769915303").
+// Historial de una referencia ("nomina:12", "proveedor:761234560").
 export function suscribirHistorial(ref, cb) {
   return onSnapshot(query(collection(db, C.hist), where("ref", "==", ref)), qs => {
     cb(qs.docs.map(s => ({ ...datos(s), id: s.id })).sort((a, b) => (aFecha(a.createdAt) || 0) - (aFecha(b.createdAt) || 0)));

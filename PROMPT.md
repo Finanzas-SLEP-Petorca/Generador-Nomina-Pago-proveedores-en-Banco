@@ -58,7 +58,7 @@ Todas las colecciones llevan prefijo `pago_`. Toda escritura incluye `updatedBy`
 
 - `pago_config/general`: `fuentes` (lista, por defecto GENERAL, SEP, PIE, FAEP), `emailDefecto` (finanzas@sleppetorca.gob.cl), `feriados` (lista de fechas ISO), `prefijoArchivo`.
 - `pago_config/contador`: `nextNum` (entero). Correlativo de nóminas.
-- `pago_proveedores/{rut}`: id = RUT normalizado sin puntos ni guion (ej. `769915303`). Campos `rut, nombre, email, banco, forma, cuenta, sector, createdAt, createdBy`.
+- `pago_proveedores/{rut}`: id = RUT normalizado sin puntos ni guion (ej. `761234560`). Campos `rut, nombre, email, banco, forma, cuenta, sector, createdAt, createdBy`.
 - `pago_documentos/{autoId}`: documentos pendientes. Campos `rut, fecha (DDMMAAAA), monto (entero), ndoc, tipo, fuente, sel (bool), dc (opcional, ej. "DC 54"), hist (opcional, texto de rechazo o anulación previa)`.
 - `pago_nominas/{num}`: id = número correlativo como texto. Campos `num, fuente, archivo, estado ('generada' | 'cargada' | 'anulada'), creadaAt, creadaPor, fechaCarga (ISO), operacion, obs, total, lineas, pagos`.
   - `lineas`: lista de mapas `{tipo: 1|2, f: [..9 campos..]}`. Firestore no admite listas de listas, así que cada línea debe ser un mapa.
